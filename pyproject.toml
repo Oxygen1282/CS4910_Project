@@ -1,0 +1,40 @@
+[project]
+name = "memtegrity"
+version = "0.1.0"
+description = "Claude Code plugin that detects, blocks and recovers from memory poisoning of AI coding agents."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Jackson McGuire" }, { name = "Oxygen1282" }]
+dependencies = [
+    "anthropic>=2.4.0",
+    "jinja2>=3.1.6",
+    "pydantic>=2.7",
+    "rich>=15.0.0",
+    "sqlmodel>=0.0.48",
+    "typer>=0.27.3",
+]
+
+[project.scripts]
+memtegrity = "memtegrity.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.7.0",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
