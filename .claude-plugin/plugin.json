@@ -1,0 +1,9 @@
+{
+  "name": "memtegrity",
+  "version": "0.1.0",
+  "description": "Integrity monitoring for Claude Code memory: detects, blocks and recovers from memory poisoning via indirect prompt injection.",
+  "author": {
+    "name": "Jackson McGuire and Oxygen1282"
+  },
+  "repository": "https://github.com/Oxygen1282/CS4910_Project"
+}

@@ -1,0 +1,46 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook session-start"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook pre-tool-use",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "FileChanged": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook file-changed"
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook config-change"
+          }
+        ]
+      }
+    ]
+  }
+}

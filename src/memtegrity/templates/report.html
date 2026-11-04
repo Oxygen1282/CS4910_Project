@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Memtegrity Incident Report</title>
+  <!-- TODO(A): styles -->
+</head>
+<body>
+  <h1>Memtegrity Incident Report</h1>
+  <p>Generated {{ generated_at }}</p>
+
+  {# TODO(A): planned sections, one per flagged ChangeEvent:
+     - file path, hook source, time, verdict and score
+     - unified diff
+     - rule hits and LLM rationale
+     - replay evidence: behavior table (clean vs. suspicious counts), refusals, cost
+     - action taken (blocked / restored / quarantined) #}
+  {% for event in events %}
+  <section>
+    <h2>{{ event.path }}</h2>
+  </section>
+  {% endfor %}
+</body>
+</html>

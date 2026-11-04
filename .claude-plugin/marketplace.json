@@ -1,0 +1,13 @@
+{
+  "name": "cs4910",
+  "owner": {
+    "name": "Oxygen1282"
+  },
+  "plugins": [
+    {
+      "name": "memtegrity",
+      "source": "./",
+      "description": "Integrity monitoring for Claude Code memory: detects, blocks and recovers from memory poisoning."
+    }
+  ]
+}
