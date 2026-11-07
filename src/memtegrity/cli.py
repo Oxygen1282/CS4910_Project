@@ -10,7 +10,7 @@ from pathlib import Path
 
 import typer
 
-from memtegrity.models import HookEvent
+from memtegrity.models import HookEvent, Verdict
 
 app = typer.Typer(help="Memtegrity: integrity monitoring for Claude Code memory.")
 
@@ -24,6 +24,51 @@ def hook(event: HookEvent) -> None:
     from memtegrity.hooks import emit
 
     emit(event)
+
+
+@app.command()
+def scan(
+    targets: list[Path] = typer.Argument(  # noqa: B008 - Typer's declaration style
+        None, help="Files or folders to scan (default: current folder)."
+    ),
+    fail_on: Verdict = typer.Option(  # noqa: B008
+        Verdict.DENY, "--fail-on", help="Exit 1 if any file reaches this verdict."
+    ),
+    exclude: list[str] = typer.Option(  # noqa: B008
+        [], "--exclude", help="Skip paths containing this text (repeatable)."
+    ),
+) -> None:
+    """Scan every AI agent's instruction, memory and config files for poisoning.
+
+    Covers Claude Code, AGENTS.md, Copilot, Cursor, Windsurf, Gemini CLI and Cline files.
+    Use in CI or pre-commit to catch poison that arrives through the repository.
+    """
+    from rich.console import Console
+    from rich.table import Table
+
+    from memtegrity.scan import scan as run_scan
+
+    findings = run_scan(targets or [Path(".")], exclude)
+    order = {Verdict.ALLOW: 0, Verdict.ASK: 1, Verdict.DENY: 2}
+    console = Console()
+    table = Table(title=f"Memtegrity scan: {len(findings)} agent file(s)")
+    for col in ("verdict", "risk", "file", "agent / kind", "why"):
+        table.add_column(col, overflow="fold")
+    style = {Verdict.ALLOW: "green", Verdict.ASK: "yellow", Verdict.DENY: "bold red"}
+    for f in sorted(findings, key=lambda f: -f.assessment.score):
+        a = f.assessment
+        table.add_row(
+            f"[{style[a.verdict]}]{a.verdict.value}[/]",
+            str(a.score),
+            str(f.path),
+            f"{f.surface.agent} / {f.surface.kind.value}",
+            a.reason if a.verdict is not Verdict.ALLOW else "",
+        )
+    console.print(table)
+    failed = [f for f in findings if order[f.assessment.verdict] >= order[fail_on]]
+    if failed:
+        console.print(f"[bold red]{len(failed)} file(s) at or above '{fail_on.value}'.[/]")
+        raise typer.Exit(1)
 
 
 @app.command()

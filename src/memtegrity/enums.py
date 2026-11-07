@@ -68,6 +68,13 @@ class RiskCategory(StrEnum):
     """Hides actions from the user ("don't tell the user", "don't mention")."""
     TAMPERING = "tampering"
     """Tries to disable Memtegrity, hooks, or other safeguards."""
+    SECURITY_WEAKENING = "security_weakening"
+    """Turns off a protection: TLS verification, host-key checks, ``--no-verify``, etc."""
+    DESTRUCTIVE = "destructive"
+    """Destroys work or data: force-push, ``rm -rf``, ``git reset --hard``, ``DROP TABLE``."""
+    UNTRUSTED_SOURCE = "untrusted_source"
+    """Instructions that came from content the agent read (a page, file, tool output),
+    not from the user. This is the signature of indirect prompt injection."""
     OTHER = "other"
     """Suspicious, but none of the above."""
 
@@ -79,3 +86,18 @@ class TrialCondition(StrEnum):
     """The last approved memory."""
     SUSPICIOUS = "suspicious"
     """The memory including the flagged change."""
+
+
+class SurfaceKind(StrEnum):
+    """What role a protected file plays for an AI agent. Agent-neutral: every agent
+    platform has files in each of these roles, under different names."""
+
+    INSTRUCTIONS = "instructions"
+    """Human-maintained guidance loaded into sessions (CLAUDE.md, AGENTS.md, rules, skills,
+    .cursor/rules, copilot-instructions.md, ...)."""
+    MEMORY = "memory"
+    """Notes the agent writes for itself and reloads later (Claude auto memory, subagent
+    memory, ...)."""
+    CONFIG = "config"
+    """Settings that change what the agent may do or what runs automatically (hooks, MCP
+    servers, permissions, environment). Judged by structure, not by text."""

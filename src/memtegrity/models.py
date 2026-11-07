@@ -26,6 +26,7 @@ from memtegrity.enums import (
     HookEvent,
     RiskCategory,
     SnapshotStatus,
+    SurfaceKind,
     TrialCondition,
     Verdict,
 )
@@ -45,6 +46,7 @@ __all__ = [
     "RuleHit",
     "Snapshot",
     "SnapshotStatus",
+    "SurfaceKind",
     "ToolCall",
     "Trial",
     "TrialCondition",
@@ -134,6 +136,10 @@ class Assessment(_Model):
     """Short user-facing explanation (used as ``permissionDecisionReason``)."""
     latency_ms: int | None = None
     """Wall-clock time spent assessing, for the eval metrics."""
+    origin: str | None = None
+    """Where the new text came from, per the provenance check: ``user``, ``external``,
+    ``mixed``, ``agent`` (the agent's own words) or ``None`` if no session record was
+    available."""
 
 
 # --------------------------------------------------------------------------- replay

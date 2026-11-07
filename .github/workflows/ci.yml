@@ -37,5 +37,11 @@ jobs:
             uv run python -m json.tool "$f" > /dev/null && echo "ok  $f"
           done
 
+      - name: No hidden Unicode in source
+        run: uv run python scripts/escape_invisible.py $(git ls-files '*.py' '*.md' '*.json' '*.toml' '*.yml' '*.yaml')
+
+      - name: Scan agent instruction files (dogfooding)
+        run: uv run memtegrity scan . --exclude demo/
+
       - name: Tests
         run: uv run pytest

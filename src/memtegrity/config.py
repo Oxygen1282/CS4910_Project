@@ -18,34 +18,8 @@ class Settings:
     """
 
     # ------------------------------------------------------------------ what counts as memory
-    memory_filenames: tuple[str, ...] = ("claude.md", "claude.local.md", "agents.md")
-    """File names that are memory wherever they appear (compared case-insensitively).
-    Claude Code loads CLAUDE.md from the project, its parent folders, subfolders and
-    ``~/.claude/``, so location alone is not a safe test."""
-
-    instruction_dirs: tuple[str, ...] = ("rules", "agents", "commands", "skills")
-    """Folders under any ``.claude/`` whose ``.md`` files load into future sessions as
-    instructions. Poison can hide here as easily as in CLAUDE.md."""
-
-    auto_memory_root: str = "~/.claude/projects"
-    """Auto memory lives in ``<auto_memory_root>/<project>/memory/`` (every file counts)."""
-
-    settings_files: tuple[str, ...] = (
-        ".claude/settings.json",
-        ".claude/settings.local.json",
-        "~/.claude/settings.json",
-    )
-    """Settings files checked for a custom ``autoMemoryDirectory`` (project-relative or ``~``)."""
-
-    pinned_memory_files: tuple[str, ...] = (
-        "CLAUDE.md",
-        ".claude/CLAUDE.md",
-        "CLAUDE.local.md",
-        "AGENTS.md",
-        "~/.claude/CLAUDE.md",
-    )
-    """Well-known memory files compared by inode, so a hard link to one of them
-    (a different name for the same file) is still recognized as memory."""
+    # Which files are protected is declared per agent in ``memtegrity.agents`` (data, so
+    # new agents need no code changes here).
 
     memory_index_max_lines: int = 200
     """Claude Code loads only the first 200 lines of ``MEMORY.md`` per session."""

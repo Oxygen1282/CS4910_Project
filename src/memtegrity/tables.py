@@ -9,7 +9,7 @@ from datetime import datetime
 
 from sqlmodel import Field, SQLModel
 
-from memtegrity.enums import FileEventKind, HookEvent, SnapshotStatus, Verdict
+from memtegrity.enums import FileEventKind, HookEvent, SnapshotStatus, SurfaceKind, Verdict
 from memtegrity.models import _utcnow
 
 
@@ -46,6 +46,12 @@ class ChangeEvent(SQLModel, table=True):
     """Database id (assigned on insert)."""
     path: str = Field(index=True)
     """Absolute path of the memory file."""
+    agent: str = "claude-code"
+    """Agent platform whose file this is (e.g. ``claude-code``, ``cursor``, ``*`` for shared
+    files like AGENTS.md). Stored so the audit trail works unchanged when more agents are
+    supported."""
+    surface_kind: SurfaceKind | None = None
+    """instructions / memory / config."""
     source: HookEvent
     """Which hook detected it: PreToolUse (attempted write), FileChanged or SessionStart."""
     file_event: FileEventKind = FileEventKind.CHANGE

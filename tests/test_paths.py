@@ -39,6 +39,11 @@ def proj(tmp_path: Path, home: Path) -> Path:
         ".claude/commands/deploy.md",
         ".claude/skills/release/SKILL.md",
         ".claude/skills/release/reference.md",
+        ".claude/output-styles/terse.md",
+        ".claude/agent-memory/reviewer/MEMORY.md",
+        ".claude/agent-memory-local/reviewer/notes.md",
+        ".claude/settings.json",  # config surface
+        ".mcp.json",  # config surface
     ],
 )
 def test_memory_files(proj: Path, rel: str) -> None:
@@ -51,7 +56,6 @@ def test_memory_files(proj: Path, rel: str) -> None:
         "README.md",
         "src/app.py",
         "docs/notes.md",
-        ".claude/settings.json",
         ".claude/rules/style.txt",
         "rules/style.md",  # not under .claude/
         "CLAUDE.md.bak",
