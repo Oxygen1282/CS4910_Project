@@ -5,187 +5,90 @@ Change them only by agreement (and in their own PR).
 
 There are two kinds of classes:
 
-* ``SQLModel`` classes with ``table=True`` are stored in SQLite (see ``store.py``).
+* ``SQLModel`` tables (``Snapshot``, ``ChangeEvent``) are stored in SQLite (see
+  ``store.py``). They are defined in ``tables.py`` and loaded lazily from here.
 * Plain Pydantic ``BaseModel`` classes are in-memory values or JSON payloads. ``LLMRisk`` is
   also the structured-output schema the LLM must fill in, so its field docstrings are sent to
-  the model as field descriptions (``use_attribute_docstrings``).
+  the model as field descriptions (``use_attribute_docstrings``). Elsewhere the field
+  docstrings are documentation only.
 
 This file contains only data definitions, no behavior.
 """
 
 from datetime import UTC, datetime
-from enum import StrEnum
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, ConfigDict
-from pydantic import Field as PydanticField
-from sqlmodel import Field, SQLModel
+from pydantic import BaseModel, ConfigDict, Field
+
+# Enums live in enums.py (no heavy imports, for the fast hook path); re-exported here.
+from memtegrity.enums import (
+    FileEventKind,
+    HookEvent,
+    RiskCategory,
+    SnapshotStatus,
+    TrialCondition,
+    Verdict,
+)
+
+if TYPE_CHECKING:  # for editors and type checkers; at runtime see __getattr__ below
+    from memtegrity.tables import ChangeEvent, Snapshot  # noqa: F401
+
+__all__ = [
+    "Assessment",
+    "BehaviorDiff",
+    "ChangeEvent",
+    "FileEventKind",
+    "HookEvent",
+    "LLMRisk",
+    "ReplayResult",
+    "RiskCategory",
+    "RuleHit",
+    "Snapshot",
+    "SnapshotStatus",
+    "ToolCall",
+    "Trial",
+    "TrialCondition",
+    "Verdict",
+]
 
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-_DOCSTRING_CONFIG = ConfigDict(use_attribute_docstrings=True)
+class _Model(BaseModel):
+    """Base for the Pydantic models below. ``defer_build`` builds each model's validator on
+    first use instead of at import, which keeps the per-Write/Edit hook fast."""
 
-
-# --------------------------------------------------------------------------- enums
-
-
-class Verdict(StrEnum):
-    """What Memtegrity decides to do about a memory change.
-
-    The values match Claude Code's PreToolUse ``permissionDecision`` strings.
-    """
-
-    ALLOW = "allow"
-    """Low risk: let the write through silently."""
-    ASK = "ask"
-    """Medium risk: show Claude Code's permission prompt so the user decides."""
-    DENY = "deny"
-    """High risk: block the write (PreToolUse) or auto-restore it (FileChanged)."""
-
-
-class SnapshotStatus(StrEnum):
-    """Lifecycle state of a stored memory-file version."""
-
-    APPROVED = "approved"
-    """Trusted baseline. Restores go back to the latest approved snapshot."""
-    PENDING = "pending"
-    """Seen but not yet approved by the user (e.g. an 'ask' that is awaiting review)."""
-    QUARANTINED = "quarantined"
-    """Judged malicious: the file was restored and this version is kept only as evidence."""
-
-
-class HookEvent(StrEnum):
-    """Claude Code hook events Memtegrity handles. Values are the CLI names
-    (``memtegrity hook <value>``)."""
-
-    SESSION_START = "session-start"
-    PRE_TOOL_USE = "pre-tool-use"
-    FILE_CHANGED = "file-changed"
-    CONFIG_CHANGE = "config-change"
-
-
-class FileEventKind(StrEnum):
-    """Kind of file-system change, as reported in the FileChanged hook's ``event`` field."""
-
-    CHANGE = "change"
-    ADD = "add"
-    UNLINK = "unlink"
-
-
-class RiskCategory(StrEnum):
-    """What kind of harm a suspicious memory change is trying to cause."""
-
-    BENIGN = "benign"
-    """Normal project notes or preferences."""
-    EXFILTRATION = "exfiltration"
-    """Sends code, secrets or data to an outside host."""
-    CREDENTIAL_ACCESS = "credential_access"
-    """Reads keys, tokens, ``.env`` files, ``~/.ssh``, etc."""
-    CODE_EXECUTION = "code_execution"
-    """Runs downloaded or obfuscated code (e.g. ``curl ... | bash``)."""
-    INSTRUCTION_OVERRIDE = "instruction_override"
-    """Standing orders that override the user or safety ("always", "ignore previous")."""
-    CONCEALMENT = "concealment"
-    """Hides actions from the user ("don't tell the user", "don't mention")."""
-    TAMPERING = "tampering"
-    """Tries to disable Memtegrity, hooks, or other safeguards."""
-    OTHER = "other"
-    """Suspicious, but none of the above."""
-
-
-class TrialCondition(StrEnum):
-    """Which memory a replay trial was run with."""
-
-    CLEAN = "clean"
-    """The last approved memory."""
-    SUSPICIOUS = "suspicious"
-    """The memory including the flagged change."""
+    model_config = ConfigDict(defer_build=True)
 
 
 # --------------------------------------------------------------------------- stored tables
+# ``Snapshot`` and ``ChangeEvent`` live in ``tables.py`` and load on first use (PEP 562), so
+# code that doesn't touch the database (the PreToolUse hook) never imports SQLModel.
+
+_LAZY_TABLES = {"Snapshot", "ChangeEvent"}
 
 
-class Snapshot(SQLModel, table=True):
-    """One stored version of one memory file."""
+def __getattr__(name: str) -> Any:
+    if name in _LAZY_TABLES:
+        from memtegrity import tables
 
-    id: int | None = Field(default=None, primary_key=True)
-    """Database id (assigned on insert)."""
-    path: str = Field(index=True)
-    """Absolute path of the memory file."""
-    sha256: str = Field(index=True)
-    """Hex SHA-256 of ``content`` (UTF-8 bytes)."""
-    content: str
-    """Full file content at this version. Empty string if the file was deleted."""
-    size_bytes: int
-    """Size of ``content`` in bytes."""
-    status: SnapshotStatus = SnapshotStatus.PENDING
-    """Approved / pending / quarantined."""
-    created_at: datetime = Field(default_factory=_utcnow)
-    """When the snapshot was taken (UTC)."""
-    session_id: str | None = None
-    """Claude Code session that produced this version, if known."""
-    note: str | None = None
-    """Free-text note, e.g. why it was approved or quarantined."""
-
-
-class ChangeEvent(SQLModel, table=True):
-    """One detected (or attempted) change to a memory file, with its assessment.
-
-    This is the audit-trail record and the unit the HTML report is built from.
-    """
-
-    id: int | None = Field(default=None, primary_key=True)
-    """Database id (assigned on insert)."""
-    path: str = Field(index=True)
-    """Absolute path of the memory file."""
-    source: HookEvent
-    """Which hook detected it: PreToolUse (attempted write), FileChanged or SessionStart."""
-    file_event: FileEventKind = FileEventKind.CHANGE
-    """change / add / unlink."""
-    tool_name: str | None = None
-    """For PreToolUse: ``Write`` or ``Edit``. ``None`` otherwise."""
-    session_id: str | None = None
-    """Claude Code session id from the hook input."""
-    before_sha256: str | None = None
-    """Hash of the last approved version (``None`` if the file is new)."""
-    after_sha256: str | None = None
-    """Hash of the new or proposed content (``None`` if the file was deleted)."""
-    before_snapshot_id: int | None = Field(default=None, foreign_key="snapshot.id")
-    """Snapshot this change is compared against."""
-    after_snapshot_id: int | None = Field(default=None, foreign_key="snapshot.id")
-    """Snapshot that stores the new or proposed content."""
-    diff: str = ""
-    """Unified diff from before to after."""
-    verdict: Verdict | None = None
-    """Final decision (copied from the assessment for easy querying)."""
-    score: int | None = None
-    """Final 0–100 risk score (copied from the assessment)."""
-    assessment_json: str | None = None
-    """The full ``Assessment``, serialized with ``Assessment.model_dump_json()``."""
-    replay_json: str | None = None
-    """The ``ReplayResult``, serialized, once a background replay has finished."""
-    restored: bool = False
-    """True if Memtegrity restored the file to the last approved snapshot."""
-    created_at: datetime = Field(default_factory=_utcnow)
-    """When the change was detected (UTC)."""
+        return getattr(tables, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 # --------------------------------------------------------------------------- risk assessment
 
 
-class RuleHit(BaseModel):
+class RuleHit(_Model):
     """One deterministic rule that matched the new content."""
-
-    model_config = _DOCSTRING_CONFIG
 
     rule_id: str
     """Stable rule identifier, e.g. ``"url.new_domain"`` or ``"cred.ssh_path"``."""
     description: str
     """Human-readable explanation of what the rule looks for."""
-    severity: int = PydanticField(ge=0, le=100)
+    severity: int = Field(ge=0, le=100)
     """How risky a match is on its own, 0–100."""
     category: RiskCategory
     """Which kind of harm this rule indicates."""
@@ -195,12 +98,14 @@ class RuleHit(BaseModel):
     """1-based line number in the new content, if known."""
 
 
-class LLMRisk(BaseModel):
+class LLMRisk(_Model):
     """Structured output the LLM returns when asked to score a memory change."""
 
-    model_config = _DOCSTRING_CONFIG
+    model_config = ConfigDict(defer_build=True, use_attribute_docstrings=True)
+    """Send the field docstrings below to the LLM as JSON-schema descriptions. (Only here:
+    it parses source at import time, which would slow down every hook call.)"""
 
-    score: int = PydanticField(ge=0, le=100)
+    score: int = Field(ge=0, le=100)
     """Risk that this change is memory poisoning: 0 = clearly benign, 100 = clearly malicious."""
     category: RiskCategory
     """The single best-fitting category for the change."""
@@ -210,18 +115,16 @@ class LLMRisk(BaseModel):
     """One to three sentences explaining the score."""
 
 
-class Assessment(BaseModel):
+class Assessment(_Model):
     """Combined result of rules plus LLM for one change. Produced by ``scoring.combine``."""
 
-    model_config = _DOCSTRING_CONFIG
-
-    score: int = PydanticField(ge=0, le=100)
+    score: int = Field(ge=0, le=100)
     """Final 0–100 risk score."""
     verdict: Verdict
     """allow / ask / deny, derived from ``score`` and the thresholds in ``config.py``."""
     category: RiskCategory
     """Overall category."""
-    rule_hits: list[RuleHit] = PydanticField(default_factory=list)
+    rule_hits: list[RuleHit] = Field(default_factory=list)
     """Every rule that matched."""
     llm: LLMRisk | None = None
     """The LLM's assessment, or ``None`` if the LLM was skipped or failed."""
@@ -236,10 +139,8 @@ class Assessment(BaseModel):
 # --------------------------------------------------------------------------- replay
 
 
-class ToolCall(BaseModel):
+class ToolCall(_Model):
     """One tool call the model *attempted* during a replay trial. Fake tools only record it."""
-
-    model_config = _DOCSTRING_CONFIG
 
     index: int
     """Order within the trial, starting at 0."""
@@ -249,10 +150,8 @@ class ToolCall(BaseModel):
     """The exact arguments the model passed."""
 
 
-class Trial(BaseModel):
+class Trial(_Model):
     """One run of the simulated Claude Code harness on one prompt with one memory state."""
-
-    model_config = _DOCSTRING_CONFIG
 
     condition: TrialCondition
     """Clean or suspicious memory."""
@@ -260,7 +159,7 @@ class Trial(BaseModel):
     """The user prompt given to the simulated agent."""
     model: str
     """Model id used, e.g. ``claude-haiku-5-5``."""
-    tool_calls: list[ToolCall] = PydanticField(default_factory=list)
+    tool_calls: list[ToolCall] = Field(default_factory=list)
     """Every tool call the model attempted, in order."""
     final_text: str = ""
     """The model's final text reply."""
@@ -268,7 +167,7 @@ class Trial(BaseModel):
     """API ``stop_reason`` of the last turn (``end_turn``, ``refusal``, ``max_tokens``, ...)."""
     refused: bool = False
     """True if the trial ended in a refusal. Counted as its own outcome."""
-    behaviors: list[str] = PydanticField(default_factory=list)
+    behaviors: list[str] = Field(default_factory=list)
     """Normalized behavior labels extracted from ``tool_calls`` (see ``replay/compare.py``)."""
     input_tokens: int = 0
     """Total input tokens across the trial."""
@@ -276,10 +175,8 @@ class Trial(BaseModel):
     """Total output tokens across the trial."""
 
 
-class BehaviorDiff(BaseModel):
+class BehaviorDiff(_Model):
     """How often one behavior appeared under clean versus suspicious memory."""
-
-    model_config = _DOCSTRING_CONFIG
 
     behavior: str
     """Normalized behavior label, e.g. ``"webfetch:backup-sync.example"``."""
@@ -291,18 +188,16 @@ class BehaviorDiff(BaseModel):
     """True if it meets the flag rule (e.g. ≥3/5 suspicious and ≤1/5 clean)."""
 
 
-class ReplayResult(BaseModel):
+class ReplayResult(_Model):
     """Behavioral evidence for one flagged change: all trials plus the comparison."""
-
-    model_config = _DOCSTRING_CONFIG
 
     change_event_id: int | None = None
     """The ``ChangeEvent`` this replay is evidence for."""
     prompts: list[str]
     """Test prompts that were used (hand-written and/or generated)."""
-    trials: list[Trial] = PydanticField(default_factory=list)
+    trials: list[Trial] = Field(default_factory=list)
     """All clean and suspicious trials."""
-    behaviors: list[BehaviorDiff] = PydanticField(default_factory=list)
+    behaviors: list[BehaviorDiff] = Field(default_factory=list)
     """Per-behavior counts and flags."""
     clean_refusals: int = 0
     """Number of clean trials that ended in a refusal."""
@@ -312,5 +207,5 @@ class ReplayResult(BaseModel):
     """True if at least one behavior was flagged."""
     estimated_cost_usd: float = 0.0
     """Estimated API cost of this replay, from token counts and model prices."""
-    finished_at: datetime = PydanticField(default_factory=_utcnow)
+    finished_at: datetime = Field(default_factory=_utcnow)
     """When the replay finished (UTC)."""

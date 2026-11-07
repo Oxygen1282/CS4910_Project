@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-memtegrity = "memtegrity.cli:app"
+memtegrity = "memtegrity.entry:main"
 
 [build-system]
 requires = ["uv_build>=0.13.1,<0.14"]

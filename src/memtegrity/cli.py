@@ -1,7 +1,7 @@
 """The internal ``memtegrity`` command-line interface (Typer).
 
-Hooks call ``memtegrity hook <event>``. The other commands back the plugin's skills.
-Every command is a stub for now.
+Hooks call ``memtegrity hook <event>``. The other commands back the plugin's skills and
+are still stubs.
 """
 
 from __future__ import annotations
@@ -12,16 +12,18 @@ import typer
 
 from memtegrity.models import HookEvent
 
-app = typer.Typer(help="Memtegrity: integrity monitoring for Claude Code memory (skeleton).")
+app = typer.Typer(help="Memtegrity: integrity monitoring for Claude Code memory.")
 
 
 @app.command()
 def hook(event: HookEvent) -> None:
     """Run a hook handler: read JSON from stdin, print the JSON response on stdout.
 
-    TODO(A): implement (look up ``hooks.HANDLERS[event]``; errors must never crash Claude Code).
+    (Hooks normally reach ``hooks.emit`` through the fast path in ``entry.py``.)
     """
-    raise NotImplementedError
+    from memtegrity.hooks import emit
+
+    emit(event)
 
 
 @app.command()

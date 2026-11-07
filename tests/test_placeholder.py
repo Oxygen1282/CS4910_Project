@@ -3,7 +3,7 @@
 import pytest
 
 import memtegrity
-from memtegrity import integrity
+from memtegrity import store
 from memtegrity.hooks import HANDLERS
 from memtegrity.models import HookEvent
 
@@ -19,4 +19,4 @@ def test_every_hook_event_has_a_handler() -> None:
 def test_stubs_are_not_implemented_yet() -> None:
     # Replace this with real tests as each TODO is implemented.
     with pytest.raises(NotImplementedError):
-        integrity.hash_text("hello")
+        store.get_engine(None)  # type: ignore[arg-type]
