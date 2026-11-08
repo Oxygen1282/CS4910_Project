@@ -3,6 +3,8 @@
 **A Claude Code plugin that detects, blocks and recovers from memory poisoning of AI coding agents.**
 
 > **Status: Block 1 done.** The PreToolUse guard blocks or flags poisoned writes to Claude Code's instruction, memory and config files, using rules, provenance (did the text come from you or from something Claude read?) and settings analysis. No AI yet. `memtegrity scan` checks a repo's agent files for every major agent. Storage, restore, the other hooks, AI scoring and replay are still stubs. Test it only with `--plugin-dir` in a throwaway folder (see [Try it](#try-it)).
+>
+> **Next up: Block 2.** Start at [docs/BLOCK2.md](docs/BLOCK2.md): what to read, what to build, and what done looks like.
 
 CS 4910 Computer Security, Fall 2026. Team: Jackson McGuire ([@jacksoncolorado](https://github.com/jacksoncolorado)) and [@Oxygen1282](https://github.com/Oxygen1282).
 
@@ -100,6 +102,7 @@ datasets/              benign + poisoned examples (format only so far)       TOD
 demo/                  demo video plan
 tests/                 pytest, incl. a research attack corpus
 docs/
+  BLOCK2.md            start here for the next block: scope, files, done criteria
   ARCHITECTURE.md      core vs. adapters, security decisions, how to add an agent
   THREATS.md           documented attacks → how Memtegrity handles each (with sources)
   PLANNING.md          agenda + open decisions
@@ -149,7 +152,7 @@ uv run memtegrity scan path/to/repo
 | Block | What | State |
 |---|---|---|
 | 1 | PreToolUse guard: path hardening, 18 rules with anti-evasion, provenance, settings/MCP analysis, scoring, fail-safe hook, repo scanner, agent registry | **Done** |
-| 2 | SQLite history, hash-chained audit log, SessionStart baseline check, `@import` targets as protected | Next |
+| 2 | SQLite history, hash-chained audit log, SessionStart baseline check, `@import` targets as protected ([guide](docs/BLOCK2.md)) | Next |
 | 3 | FileChanged detection (Bash, MCP, outside writes), restore + quarantine | |
 | 4 | LLM judge (semantic poison, typosquats), removed-safeguard detection | |
 | 5 | Replay evidence | |

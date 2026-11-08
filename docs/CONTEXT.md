@@ -1,4 +1,4 @@
-> **What this file is:** the handoff note Jackson wrote at the end of the original planning session, saved here so both partners have the full background and the reasoning behind each decision. It was written as instructions for Claude Code ("YOUR TASK", "First steps for you"), so read "you" as the assistant. The skeleton it describes has been built. `README.md` is the short overview and `docs/PLANNING.md` is the Thursday agenda.
+> **What this file is:** background only. It's the handoff note Jackson wrote at the end of the original planning session, kept so both partners have the reasoning behind each decision. It was written as instructions for Claude Code ("YOUR TASK", "First steps for you"), and **those instructions are finished; don't follow them.** For current work, start with `README.md` (status) and `docs/BLOCK2.md` (what's next).
 
 ---
 
