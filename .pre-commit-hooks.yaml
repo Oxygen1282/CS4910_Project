@@ -1,0 +1,12 @@
+# Lets other repositories use Memtegrity's scanner as a pre-commit hook:
+#   - repo: https://github.com/Oxygen1282/CS4910_Project
+#     rev: <tag>
+#     hooks:
+#       - id: memtegrity-scan
+- id: memtegrity-scan
+  name: memtegrity scan (AI agent instruction, memory and config files)
+  description: Blocks commits that add poisoned instructions to any AI agent's files.
+  entry: memtegrity scan
+  language: python
+  pass_filenames: true
+  files: (^|/)(CLAUDE(\.local)?\.md|AGENTS\.md|GEMINI\.md|\.cursorrules|\.windsurfrules|\.clinerules|\.mcp\.json|copilot-instructions\.md)$|(^|/)(\.claude|\.cursor/rules|\.windsurf/rules|\.github/instructions|\.clinerules)/

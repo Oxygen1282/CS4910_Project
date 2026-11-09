@@ -6,31 +6,20 @@ in ``docs/PLANNING.md``.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from dataclasses import dataclass
 
 
-class Settings(BaseModel):
-    """All tunable settings. ``DEFAULT_SETTINGS`` below is what the hooks use."""
+@dataclass(frozen=True)
+class Settings:
+    """All tunable settings. ``DEFAULT_SETTINGS`` below is what the hooks use.
 
-    model_config = ConfigDict(frozen=True, use_attribute_docstrings=True)
+    A plain frozen dataclass (not Pydantic) so importing it costs nothing: the PreToolUse
+    hook loads this on every Write/Edit.
+    """
 
     # ------------------------------------------------------------------ what counts as memory
-    project_memory_globs: tuple[str, ...] = (
-        "CLAUDE.md",
-        ".claude/CLAUDE.md",
-        "CLAUDE.local.md",
-        "AGENTS.md",
-        ".claude/rules/**/*.md",
-    )
-    """Memory files relative to the project directory (confirm Thursday)."""
-
-    user_memory_globs: tuple[str, ...] = (
-        "~/.claude/CLAUDE.md",
-        "~/.claude/rules/**/*.md",
-        "~/.claude/projects/*/memory/**/*.md",
-    )
-    """Memory files in the user's home directory. The last one is auto memory (``MEMORY.md``
-    index plus topic files). If ``autoMemoryDirectory`` is set, that folder counts too."""
+    # Which files are protected is declared per agent in ``memtegrity.agents`` (data, so
+    # new agents need no code changes here).
 
     memory_index_max_lines: int = 200
     """Claude Code loads only the first 200 lines of ``MEMORY.md`` per session."""
@@ -57,6 +46,9 @@ class Settings(BaseModel):
 
     deny_threshold: int = 75
     """Score at or above this → ``deny`` / auto-restore (confirm Thursday)."""
+
+    max_reasons: int = 3
+    """How many rule hits to list in a block/ask message."""
 
     # ------------------------------------------------------------------ replay
     trials_per_condition: int = 5

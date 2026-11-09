@@ -30,3 +30,16 @@ repos:
         entry: uv run ruff format
         language: system
         types: [python]
+      # Security code must not contain characters a reviewer can't see (Trojan Source).
+      - id: no-hidden-unicode
+        name: no hidden Unicode in source
+        entry: uv run python scripts/escape_invisible.py
+        language: system
+        types: [text]
+      # Dogfooding: scan this repo's own agent files (demo/ holds intentional poison).
+      - id: memtegrity-scan
+        name: memtegrity scan
+        entry: uv run memtegrity scan --exclude demo/
+        language: system
+        pass_filenames: true
+        files: (^|/)(CLAUDE(\.local)?\.md|AGENTS\.md|GEMINI\.md|\.cursorrules|\.windsurfrules|\.clinerules|\.mcp\.json|copilot-instructions\.md)$|(^|/)(\.claude|\.cursor/rules|\.windsurf/rules|\.github/instructions|\.clinerules)/

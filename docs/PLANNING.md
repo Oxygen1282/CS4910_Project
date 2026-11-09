@@ -26,6 +26,12 @@ Smaller things to agree on:
 - [ ] Marketplace name: currently `cs4910`, so the install is `memtegrity@cs4910`
 - [ ] Run `uv run pre-commit autoupdate` once to pin the newest hook versions
 
+## Decisions made (Nov 7)
+- **Scope:** real-time protection is Claude Code only for this project, but everything is built so other agents can be added without a rewrite (agent-neutral core, per-agent registry). See `docs/ARCHITECTURE.md`. Other agents' instruction files are already protected when Claude writes them, and covered by `memtegrity scan`.
+- **Scoring:** the current weights and thresholds are provisional (hand-set from the threat research). A later block calibrates them on the labeled dataset.
+- **Provenance** (did new memory text come from the user or from content Claude read?) is part of Block 1.
+- **Workflow:** we work in blocks, one person at a time. Each block ends with a PR and a `docs/BLOCK<n+1>.md` guide for the next person. Current: [BLOCK2.md](BLOCK2.md).
+
 ## Risks
 1. **PreToolUse latency.** Claude waits while we score. Keep the LLM call short with a timeout (`llm_timeout_seconds`), fall back to rules only, and measure it.
 2. **Claude may not take the bait on camera.** It often resists obvious poison. Use subtle poison and keep a scripted fallback for the video (`demo/README.md`).
