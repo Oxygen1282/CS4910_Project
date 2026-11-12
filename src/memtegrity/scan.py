@@ -35,7 +35,8 @@ class Finding:
 def iter_candidates(targets: Iterable[Path], exclude: Iterable[str] = ()) -> Iterator[Path]:
     """Files under ``targets`` (files are yielded as-is), skipping vendored/build folders
     and anything whose path contains one of ``exclude``."""
-    excluded = tuple(exclude)
+    # Compare with forward slashes, so ``--exclude demo/`` also works on Windows paths.
+    excluded = tuple(e.replace("\\", "/") for e in exclude)
     for target in targets:
         if target.is_file():
             yield target
@@ -44,7 +45,7 @@ def iter_candidates(targets: Iterable[Path], exclude: Iterable[str] = ()) -> Ite
             dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
             for name in filenames:
                 path = Path(dirpath) / name
-                if not any(part in str(path) for part in excluded):
+                if not any(part in path.as_posix() for part in excluded):
                     yield path
 
 

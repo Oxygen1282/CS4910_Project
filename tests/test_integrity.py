@@ -24,7 +24,7 @@ def test_hash_text_known_vector() -> None:
 def test_hash_file_matches_hash_text_across_chunks(tmp_path: Path) -> None:
     text = "line of memory\n" * 20_000  # > one 64 KiB chunk
     f = tmp_path / "CLAUDE.md"
-    f.write_text(text)
+    f.write_bytes(text.encode("utf-8"))  # exact bytes: no CRLF translation on Windows
     assert hash_file(f) == hash_text(text)
 
 
@@ -64,6 +64,18 @@ def test_apply_edit_unique() -> None:
 
 def test_apply_edit_replace_all() -> None:
     assert apply_edit("a a a", "a", "b", replace_all=True) == "b b b"
+
+
+def test_apply_edit_on_crlf_file_keeps_crlf() -> None:
+    # A Windows checkout has CRLF; Claude's old_string/new_string use LF.
+    current = "# Notes\r\n- Use pnpm.\r\n- Tests live in tests/.\r\n"
+    after = apply_edit(current, "- Use pnpm.\n- Tests", "- Use pnpm.\n- Lint first.\n- Tests")
+    assert after == "# Notes\r\n- Use pnpm.\r\n- Lint first.\r\n- Tests live in tests/.\r\n"
+    assert added_lines(current, after) == [(3, "- Lint first.")]
+
+
+def test_apply_edit_single_line_on_crlf_file() -> None:
+    assert apply_edit("a\r\nb\r\n", "b", "c") == "a\r\nc\r\n"
 
 
 @pytest.mark.parametrize(

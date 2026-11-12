@@ -3,27 +3,64 @@
 Security rule: **canonicalize before you authorize.** A check on the path string the agent
 passed us is easy to dodge (``docs/../CLAUDE.md``, a symlink named ``notes.md``, or
 ``claude.md`` on macOS's case-insensitive disk), so every decision here is made on the
-fully resolved, case-folded path, and hard links are caught by comparing inodes.
+fully resolved, case-folded path, and hard links are caught by comparing inodes. On
+Windows, Win32 name aliases (``CLAUDE.md.``, ``CLAUDE.md::$DATA``) are removed first.
 
 Which files are protected is declared per agent in ``memtegrity.agents``.
 """
 
 from __future__ import annotations
 
+import ntpath
 import os
+import re
 import unicodedata
 from pathlib import Path
 
 from memtegrity.surfaces import Surface, home_parts, matches, under
 
+_WIN_STREAM_RX = re.compile(r"::\$data$|:(?:\$i30)?:\$index_allocation$", re.IGNORECASE)
+_WIN_SEP_RX = re.compile(r"([\\/]+)")
+
+
+def win32_alias_free(path: str) -> str:
+    """Undo Windows name aliasing that ``realpath`` can't see for files that don't exist yet.
+
+    Win32 opens all of these as the same file, so ``CLAUDE.md`` could be written under
+    another name:
+
+    * trailing dots and spaces are dropped (``CLAUDE.md.``, ``CLAUDE.md ``)
+    * ``::$DATA`` names a file's main data stream (``CLAUDE.md::$DATA``)
+    * ``::$INDEX_ALLOCATION`` names a directory (``.claude::$INDEX_ALLOCATION``)
+
+    Pure string function (uses Windows path rules on any OS, so it is testable anywhere).
+    """
+    drive, rest = ntpath.splitdrive(path)
+    out = []
+    for part in _WIN_SEP_RX.split(rest):
+        if part and part[0] not in "\\/":
+            previous = None
+            while part != previous:  # suffixes can be stacked: "CLAUDE.md. ::$DATA ."
+                previous = part
+                part = _WIN_STREAM_RX.sub("", part)
+                stripped = part.rstrip(". ")
+                if stripped.strip("."):  # leave ".", ".." and other all-dot names alone
+                    part = stripped
+        out.append(part)
+    return drive + "".join(out)
+
 
 def resolve_path(path: str | os.PathLike[str], base: Path | None = None) -> Path:
     """Return the canonical absolute path: ``~`` expanded, relative paths joined to
-    ``base`` (default: the current directory), symlinks and ``..`` resolved.
+    ``base`` (default: the current directory), symlinks and ``..`` resolved, and on
+    Windows, name aliases removed (see ``win32_alias_free``).
 
     Works for files that don't exist yet (their existing parent folders are resolved).
     """
-    p = Path(os.path.expanduser(os.fspath(path)))
+    raw = os.fspath(path)
+    if os.name == "nt":
+        raw = win32_alias_free(raw)
+    p = Path(os.path.expanduser(raw))
     if not p.is_absolute():
         p = (base or Path.cwd()) / p
     return Path(os.path.realpath(p))

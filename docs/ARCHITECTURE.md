@@ -61,7 +61,9 @@ Memtegrity protects the files AI coding agents load as **instructions**, **memor
 | Enforcement in hooks, not in instructions | Enforcement outside the protected system (Anthropic's docs: memory is "context, not enforced configuration") | `hooks.py` |
 | Never answer "allow" | Least privilege: "allow" would skip the user's own permission prompt | `hooks.py` |
 | Errors → "ask" | Fail securely | `hooks.run_hook` |
-| Resolve paths before deciding | Canonicalize before authorizing (path traversal, symlinks, case, hard links) | `paths.py` |
+| Resolve paths before deciding | Canonicalize before authorizing (path traversal, symlinks, case, hard links; on Windows also `CLAUDE.md.`, `CLAUDE.md::$DATA`, `.claude::$INDEX_ALLOCATION`) | `paths.py` |
+| Decode hook input as UTF-8 ourselves | Windows' default code page (cp1252) would garble hidden-Unicode payloads into text the rules can't see | `hooks.read_stdin` |
+| Bounded regex gaps, bounded negation look-back | No ReDoS: the PreToolUse hook must not be stallable by a crafted long line | `rules.py` |
 | Normalize + decode before matching | Defense against obfuscation (Unicode tags, zero-width, variation selectors, Sneaky Bits, base64) | `rules.py` |
 | Unpredictable edit ≠ safe | No fail-open on parser mismatch | `engine.py` |
 | Provenance amplifies only directives | Precision: don't punish `/init` for copying README text | `scoring.py` |

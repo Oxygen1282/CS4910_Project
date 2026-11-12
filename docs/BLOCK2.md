@@ -15,7 +15,8 @@
 3. Set up and check that everything passes:
    ```bash
    uv sync
-   uv run pytest          # expect: all pass, 1 xfail (typosquat → Block 4)
+   uv run pytest          # expect: all pass, 1 xfail (typosquat → Block 4); on Windows also a few
+                          # skips (symlink tests without Developer Mode, macOS/Linux-only checks)
    uv run pre-commit install
    ```
 4. Branch from up-to-date `main`: `git switch main && git pull && git switch -c feat/block2-history`
@@ -41,12 +42,13 @@ Suggested order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8. Each one can be it
 
 - **Speed:** the PreToolUse hook runs on every Write/Edit. Never import `store`, SQLModel or Pydantic at the top of `hooks.py`; import them inside functions that only run for protected files. Check with:
   ```bash
-  .venv/bin/python -c "import sys, memtegrity.hooks; print('pydantic' in sys.modules)"   # must print False
+  uv run python -c "import sys, memtegrity.hooks; print('pydantic' in sys.modules)"   # must print False
   ```
 - **Never crash Claude Code:** handlers may raise (`run_hook` catches it), but SessionStart must still return quickly on a large repo. Cap the files scanned and time spent.
 - **Stay agent-neutral:** Claude-specific details go in `hooks.py` or `agents/claude_code.py`; logic goes in the core. Fill in `ChangeEvent.agent` and `surface_kind` from the `Surface`.
 - **Don't change scoring numbers.** They're provisional and get calibrated in Block 6.
 - **No API calls**, in code or tests.
+- **Works on macOS, Linux and Windows** (CI runs all three). In code: open text files with `encoding="utf-8"` (Windows defaults to cp1252); build paths with `pathlib`, never by joining `"/"` strings; get the home folder from `Path.home()` (Windows ignores `$HOME`); expect CRLF files (`splitlines()`, not `split("\n")`). `data_dir()`'s fallback must be `Path.home() / ".cache" / "memtegrity"`, the same folder `hooks.json`'s `$HOME/.cache/memtegrity` gives under Git Bash. In tests: fake the home folder with `conftest.set_home` (not `monkeypatch.setenv("HOME", …)`), create symlinks with `conftest.symlink_or_skip`, and write exact bytes (`write_bytes`) when a test compares hashes.
 - **No hidden Unicode in source:** CI checks it. Write `"\u200b"` style escapes, then run `uv run python scripts/escape_invisible.py <files>`.
 
 ## 4. Check with Jackson before deciding

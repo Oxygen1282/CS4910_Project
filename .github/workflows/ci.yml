@@ -11,7 +11,16 @@ permissions:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Memtegrity must work wherever Claude Code runs (the demo is on macOS; Windows is
+    # supported too), so every check runs on all three.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash # Git Bash on Windows, the same shell Claude Code runs hooks with
     env:
       # CI must never call the real Claude API. No key is provided on purpose.
       ANTHROPIC_API_KEY: ""

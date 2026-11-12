@@ -5,15 +5,16 @@ import os
 from pathlib import Path
 
 import pytest
+from conftest import set_home, symlink_or_skip
 
-from memtegrity.paths import is_memory_path, resolve_path
+from memtegrity.paths import is_memory_path, resolve_path, win32_alias_free
 
 
 @pytest.fixture
 def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     h = tmp_path / "home"
     h.mkdir()
-    monkeypatch.setenv("HOME", str(h))
+    set_home(monkeypatch, h)
     return h
 
 
@@ -78,12 +79,12 @@ def test_relative_and_traversal_paths(proj: Path) -> None:
 
 
 def test_symlink_to_memory_file(proj: Path) -> None:
-    (proj / "notes.md").symlink_to(proj / "CLAUDE.md")
+    symlink_or_skip(proj / "notes.md", proj / "CLAUDE.md")
     assert is_memory_path(proj / "notes.md", proj)
 
 
 def test_symlinked_directory(proj: Path) -> None:
-    (proj / "cfg").symlink_to(proj / ".claude", target_is_directory=True)
+    symlink_or_skip(proj / "cfg", proj / ".claude", target_is_directory=True)
     assert is_memory_path(proj / "cfg" / "rules" / "x.md", proj)
 
 
@@ -111,7 +112,9 @@ def test_auto_memory(home: Path) -> None:
 
 
 def test_custom_auto_memory_directory(proj: Path) -> None:
-    (proj / ".claude" / "settings.json").write_text(json.dumps({"autoMemoryDirectory": "mem"}))
+    (proj / ".claude" / "settings.json").write_text(
+        json.dumps({"autoMemoryDirectory": "mem"}), encoding="utf-8"
+    )
     assert is_memory_path(proj / "mem" / "notes.md", proj)
     assert not is_memory_path(proj / "other" / "notes.md", proj)
 
@@ -124,3 +127,31 @@ def test_malformed_settings_do_not_crash(proj: Path) -> None:
 def test_resolve_path_handles_missing_files(proj: Path) -> None:
     p = resolve_path("new/dir/CLAUDE.md", proj)
     assert p.is_absolute() and p.name == "CLAUDE.md"
+
+
+@pytest.mark.parametrize(
+    ("alias", "real"),
+    [
+        (r"C:\p\CLAUDE.md.", r"C:\p\CLAUDE.md"),
+        (r"C:\p\CLAUDE.md . .", r"C:\p\CLAUDE.md"),
+        (r"C:\p\CLAUDE.md::$DATA", r"C:\p\CLAUDE.md"),
+        (r"C:\p\claude.md::$data", r"C:\p\claude.md"),
+        (r"C:\p\CLAUDE.md. ::$DATA .", r"C:\p\CLAUDE.md"),  # stacked
+        (r"C:\p\.claude::$INDEX_ALLOCATION\settings.json", r"C:\p\.claude\settings.json"),
+        (r"C:\p\.claude:$I30:$INDEX_ALLOCATION/rules/x.md", r"C:\p\.claude/rules/x.md"),
+        ("C:/p/.claude./rules/x.md", "C:/p/.claude/rules/x.md"),
+        (r"..\CLAUDE.md", r"..\CLAUDE.md"),  # "." and ".." are left alone
+        (r"C:\p\CLAUDE.md:notes", r"C:\p\CLAUDE.md:notes"),  # a separate stream, not loaded
+    ],
+)
+def test_win32_aliases_are_removed(alias: str, real: str) -> None:
+    # Pure string logic, so it is checked on every OS.
+    assert win32_alias_free(alias) == real
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Win32 name aliases exist only on Windows")
+def test_win32_aliases_classify_as_memory(proj: Path) -> None:
+    (proj / "CLAUDE.md").unlink()  # not on disk, so realpath can't resolve the alias
+    for alias in ("CLAUDE.md.", "CLAUDE.md ", "CLAUDE.md::$DATA"):
+        assert is_memory_path(proj / alias, proj), alias
+    assert is_memory_path(str(proj) + r"\.claude::$INDEX_ALLOCATION\settings.json", proj)

@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from conftest import set_home
 
 from memtegrity.agents import PROFILES
 from memtegrity.enums import SurfaceKind
@@ -38,7 +39,7 @@ def test_project_surfaces(rel: str, agent: str, kind: SurfaceKind) -> None:
 
 
 def test_home_surfaces(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("HOME", str(tmp_path))
+    set_home(monkeypatch, tmp_path)
     assert classify(tmp_path / ".claude.json").kind is SurfaceKind.CONFIG
     assert classify(tmp_path / ".claude/projects/-p/memory/MEMORY.md").kind is SurfaceKind.MEMORY
     skill = tmp_path / ".claude/plugins/cache/x/1.0/skills/deploy/SKILL.md"
@@ -50,7 +51,7 @@ def test_home_surfaces(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 def test_claude_config_dir_moves_auto_memory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    set_home(monkeypatch, tmp_path / "home")
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "cfg"))
     s = classify(tmp_path / "cfg/projects/-p/memory/topic.md")
     assert s is not None and s.kind is SurfaceKind.MEMORY

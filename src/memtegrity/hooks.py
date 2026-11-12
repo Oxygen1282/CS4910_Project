@@ -26,6 +26,7 @@ Pydantic models) is imported only for actual protected-file writes.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -62,9 +63,10 @@ def _display(path: Path, project_dir: Path | None) -> str:
             return str(path.relative_to(paths.resolve_path(project_dir)))
         except ValueError:
             pass
-    home = str(Path.home())
-    s = str(path)
-    return "~" + s[len(home) :] if s.startswith(home + os.sep) else s
+    try:  # resolved, so drive-letter and folder case match on Windows
+        return str(Path("~") / path.relative_to(paths.resolve_path(Path.home())))
+    except ValueError:
+        return str(path)
 
 
 def _decision(verdict: Verdict, reason: str, system_message: str | None = None) -> HookOutput:
@@ -238,11 +240,34 @@ def emit(event: HookEvent) -> None:
 
     Always returns normally (exit code 0): decisions travel in the JSON, and ``run_hook``
     never raises, so a bug can't crash Claude Code or silently skip the check.
+
+    Claude Code sends UTF-8. Decode it ourselves: ``sys.stdin`` uses the locale encoding,
+    which on Windows is a legacy code page (cp1252), so hidden characters in the payload
+    would turn into different characters and slip past the rules.
     """
-    output = run_hook(event, sys.stdin.read())
+    _safe_stderr()
+    output = run_hook(event, read_stdin())
     if output:
         sys.stdout.write(json.dumps(output))
         sys.stdout.flush()
+
+
+def read_stdin() -> str:
+    """The hook input, decoded as UTF-8 on every platform. Bad bytes become U+FFFD (they
+    are still analyzed) instead of raising."""
+    stream = getattr(sys.stdin, "buffer", None)
+    if stream is None:  # replaced by a text-only stream (tests, embedding)
+        return sys.stdin.read()
+    return stream.read().decode("utf-8", errors="replace")
+
+
+def _safe_stderr() -> None:
+    """Make diagnostics unable to crash the hook. On Windows, printing a non-ASCII path or
+    error to a cp1252 stderr raises, and a crashed PreToolUse hook lets the write through."""
+    reconfigure = getattr(sys.stderr, "reconfigure", None)
+    if reconfigure is not None:
+        with contextlib.suppress(OSError, ValueError):
+            reconfigure(errors="backslashreplace")
 
 
 def run_hook(event: HookEvent, raw_input: str) -> HookOutput:

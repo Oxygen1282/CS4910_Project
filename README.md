@@ -45,9 +45,12 @@ Python 3.12 · [uv](https://docs.astral.sh/uv/) · Typer + Rich (CLI) · SQLMode
 
 ## Dev setup
 
+Works on macOS, Linux and Windows (CI runs on all three). On Windows, run these in **Git Bash** (installed with Git for Windows, which Claude Code also needs and uses to run hooks).
+
 ```bash
 # 1. Install uv (once per machine)
-curl -LsSf https://astral.sh/uv/install.sh | sh     # or: brew install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh     # macOS/Linux, or: brew install uv
+# Windows: winget install astral-sh.uv   (then open a new terminal)
 
 # 2. Install dependencies (creates .venv with Python 3.12)
 uv sync
@@ -65,6 +68,11 @@ cp .env.example .env    # then fill in ANTHROPIC_API_KEY. .env is gitignored.
 ```
 
 Tests and CI **never** call the real API. Mock the client.
+
+**Windows notes**
+- The symlink-evasion tests need permission to create symlinks. Turn on *Developer Mode* (Settings → System → For developers); without it those few tests are skipped, not failed. CI runs them on all three systems.
+- The fast-path check is `uv run python -c "import sys, memtegrity.hooks; print('pydantic' in sys.modules)"` (prints `False`). Use this form on every OS: the venv's Python is `.venv/bin/python` on macOS/Linux but `.venv\Scripts\python.exe` on Windows.
+- Windows-only path tricks (`CLAUDE.md.`, `CLAUDE.md::$DATA`, `.claude::$INDEX_ALLOCATION`) are handled in `paths.py`; see `docs/ARCHITECTURE.md`.
 
 ## Repo layout
 
@@ -131,7 +139,7 @@ Workflow: feature branches → PR reviewed by the other partner → protected `m
 
 ## Try it
 
-Load the plugin for one session only (nothing is installed), in a throwaway folder:
+Load the plugin for one session only (nothing is installed), in a throwaway folder. Replace `~/CS4910_Project` with wherever you cloned the repo (on Windows, Git Bash also accepts `"C:/path/to/CS4910_Project"`):
 
 ```bash
 mkdir -p ~/memtegrity-test && cd ~/memtegrity-test
