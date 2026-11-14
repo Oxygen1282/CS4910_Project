@@ -151,11 +151,29 @@ def test_unreadable_input_fails_safe_for_pre_tool_use() -> None:
 
 
 @pytest.mark.parametrize(
-    "event", [HookEvent.SESSION_START, HookEvent.FILE_CHANGED, HookEvent.CONFIG_CHANGE]
+    "event",
+    [
+        HookEvent.SESSION_START,
+        HookEvent.POST_TOOL_USE,
+        HookEvent.FILE_CHANGED,
+        HookEvent.CONFIG_CHANGE,
+    ],
 )
-def test_unbuilt_hooks_are_quiet_no_ops(event: HookEvent) -> None:
-    assert run_hook(event, json.dumps({"hook_event_name": "x"})) == {}
+def test_non_blocking_hooks_are_quiet_on_bad_or_empty_input(event: HookEvent) -> None:
+    assert run_hook(event, json.dumps({"hook_event_name": "x"})) == {}  # no cwd, no tool
     assert run_hook(event, "not json") == {}
+
+
+def test_audit_failure_never_changes_the_decision(
+    proj: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import memtegrity.hooks as hooks
+
+    def broken(*_a: object, **_k: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(hooks, "audit_attempt", broken)
+    assert decision(handle_pre_tool_use(edit(proj, ANCHOR + "\n" + POISON))) == "deny"
 
 
 # --------------------------------------------------------------------------- end to end

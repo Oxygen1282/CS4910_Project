@@ -80,10 +80,221 @@ def roots(project_dir: Path | None) -> list[Root]:
     return out
 
 
+# =========================================================================== session files
+# What loads into a session besides the project tree. Deliberately NOT included in the
+# SessionStart baseline (still guarded at write time by PreToolUse):
+# * ``~/.claude.json``: Claude Code rewrites it every session (counters, history), so it
+#   would "change" every time; its MCP servers are a ConfigChange concern (Block 6).
+# * installed plugins: they change on every plugin update.
+
+
+def _project_slug(path: str) -> str:
+    """Claude Code's folder name for a project under ``~/.claude/projects``: every
+    character that isn't a letter or digit becomes ``-`` (``/Users/me/app`` →
+    ``-Users-me-app``, ``C:\\Users\\me\\app`` → ``C--Users-me-app``)."""
+    return re.sub(r"[^A-Za-z0-9]", "-", path)
+
+
+def _git_root(project_dir: Path) -> Path | None:
+    for d in (project_dir, *project_dir.parents):
+        if (d / ".git").exists():
+            return d
+    return None
+
+
+def auto_memory_dirs(project_dir: Path) -> list[Path]:
+    """This project's auto memory folder(s). Claude Code keys auto memory by the project
+    (or its git repository root, shared by subfolders and worktrees); both are covered."""
+    names = {_project_slug(str(project_dir))}
+    git_root = _git_root(project_dir)
+    if git_root is not None:
+        names.add(_project_slug(str(git_root)))
+    projects = _config_dir() / "projects"
+    return [projects / name / "memory" for name in sorted(names)]
+
+
+_ANCESTOR_FILES = ("CLAUDE.md", "CLAUDE.local.md", ".claude/CLAUDE.md")
+_USER_ITEMS = (
+    "CLAUDE.md",
+    "settings.json",
+    "rules",
+    "agents",
+    "commands",
+    "skills",
+    "output-styles",
+    "agent-memory",
+)
+
+
+def session_paths(project_dir: Path) -> list[Path]:
+    """Places outside the project tree that load into its sessions: CLAUDE.md files in
+    parent folders, the user's ``~/.claude`` instructions and settings, and this project's
+    auto memory (default or ``autoMemoryDirectory``)."""
+    cfg = _config_dir()
+    out = [cfg / item for item in _USER_ITEMS]
+    out += [d / name for d in project_dir.parents for name in _ANCESTOR_FILES]
+    out += auto_memory_dirs(project_dir)
+    out += _custom_memory_dirs(project_dir)
+    return out
+
+
+# =========================================================================== @imports
+# CLAUDE.md files can pull other files into every session with ``@path`` (relative to the
+# importing file, ``~/`` for home, up to 4 hops; not inside code spans or fenced blocks).
+# An attacker who can't touch CLAUDE.md can poison a plain doc it already imports, so
+# import targets are protected as instruction files. Both ``/`` and ``\`` separators are
+# accepted (Windows users write ``@docs\setup.md``).
+
+IMPORT_MAX_HOPS = 4
+_IMPORT_MAX_BYTES = 1_000_000
+IMPORTED = Surface(AGENT, INSTR, "@import target of CLAUDE.md", "@import")
+
+_FENCE_RX = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+_CODE_SPAN_RX = re.compile(r"(`+)(?:(?!\1)[^\n])+?\1")
+_IMPORT_TOKEN_RX = re.compile(r"(?<![\w@`/\\.])@([~\w.\\/-][\w.\\/:~+-]*)")
+
+
+def _strip_code(text: str) -> str:
+    """Drop fenced code blocks and inline code spans: imports there aren't evaluated."""
+    out, fence = [], None
+    for line in text.splitlines():
+        m = _FENCE_RX.match(line)
+        if fence is None and m:
+            fence = m.group(1)
+            continue
+        if fence is not None:
+            if m and m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence):
+                fence = None
+            continue
+        out.append(_CODE_SPAN_RX.sub(" ", line))
+    return "\n".join(out)
+
+
+def parse_imports(text: str) -> list[str]:
+    """The raw ``@path`` tokens in ``text`` (outside code), trailing punctuation removed."""
+    tokens = []
+    for m in _IMPORT_TOKEN_RX.finditer(_strip_code(text)):
+        tok = m.group(1).rstrip(".,;:!?)")
+        if tok and tok not in (".", ".."):
+            tokens.append(tok)
+    return tokens
+
+
+def _resolve_import(token: str, base_dir: Path) -> list[Path]:
+    """Where an import can point. A backslash is a separator on Windows and a plain
+    character elsewhere; both readings are returned, so neither can be used to hide."""
+    from memtegrity.paths import resolve_path
+
+    forms = [token]
+    if "\\" in token:
+        forms.append(token.replace("\\", "/"))
+    out = []
+    for form in forms:
+        p = Path(os.path.expanduser(form)) if form.startswith("~") else Path(form)
+        out.append(resolve_path(p if p.is_absolute() else base_dir / p))
+    return out
+
+
+_TARGET_CACHE: dict[str, tuple[tuple[int, int], tuple[Path, ...]]] = {}
+
+
+def import_targets(path: Path) -> tuple[Path, ...]:
+    """Every path ``path`` imports, existing or not (a Write may be about to create one).
+    Cached per file by (mtime, size)."""
+    try:
+        st = path.stat()
+    except OSError:
+        return ()
+    sig = (st.st_mtime_ns, st.st_size)
+    hit = _TARGET_CACHE.get(str(path))
+    if hit is not None and hit[0] == sig:
+        return hit[1]
+    targets: tuple[Path, ...] = ()
+    if st.st_size <= _IMPORT_MAX_BYTES:
+        try:
+            text = path.read_bytes().decode("utf-8", errors="replace")
+        except OSError:
+            text = ""
+        found: dict[Path, None] = {}
+        for tok in parse_imports(text):
+            for target in _resolve_import(tok, path.parent):
+                found.setdefault(target, None)
+        targets = tuple(found)
+    _TARGET_CACHE[str(path)] = (sig, targets)
+    return targets
+
+
+def _walk_imports(roots: list[Path], stop_at: tuple[str, ...] | None = None) -> list[Path]:
+    """Breadth-first over imports, ``IMPORT_MAX_HOPS`` deep. Returns existing targets in
+    order found; if ``stop_at`` (a ``paths.key``) is reached, returns ``[that path]``."""
+    from memtegrity.paths import key
+
+    seen = {key(r) for r in roots}
+    frontier, found = list(roots), []
+    for _hop in range(IMPORT_MAX_HOPS):
+        nxt = []
+        for f in frontier:
+            for t in import_targets(f):
+                k = key(t)
+                if stop_at is not None and k == stop_at:
+                    return [t]
+                if k in seen:
+                    continue
+                seen.add(k)
+                if t.is_file():
+                    found.append(t)
+                    nxt.append(t)
+        frontier = nxt
+    return [] if stop_at is not None else found
+
+
+def _rules_files(rules_dir: Path) -> list[Path]:
+    if not rules_dir.is_dir():
+        return []
+    return [p for p in rules_dir.rglob("*.md") if p.is_file()]
+
+
+def _import_roots(project_dir: Path | None, target: Path) -> list[Path]:
+    """Instruction files that load every session and may import ``target``: CLAUDE.md
+    files in the project, its parents and the target's own folders, plus rules."""
+    from memtegrity.paths import resolve_path
+
+    dirs: dict[Path, None] = {}
+    if project_dir is not None:
+        project = resolve_path(project_dir)
+        for d in (project, *project.parents):
+            dirs.setdefault(d, None)
+    for d in target.parents:
+        dirs.setdefault(d, None)
+    roots = [d / name for d in dirs for name in _ANCESTOR_FILES]
+    cfg = _config_dir()
+    roots.append(cfg / "CLAUDE.md")
+    roots += _rules_files(cfg / "rules")
+    if project_dir is not None:
+        roots += _rules_files(resolve_path(project_dir) / ".claude" / "rules")
+    return [r for r in roots if r.is_file()]
+
+
+def imported(project_dir: Path | None, target: Path) -> Surface | None:
+    """``IMPORTED`` if an instruction file imports ``target`` (within 4 hops)."""
+    from memtegrity.paths import key
+
+    roots = _import_roots(project_dir, target)
+    return IMPORTED if roots and _walk_imports(roots, stop_at=key(target)) else None
+
+
+def import_closure(files: list[Path]) -> dict[Path, Surface]:
+    """Existing files imported (up to 4 hops) by any of ``files``."""
+    return dict.fromkeys(_walk_imports(list(files)), IMPORTED)
+
+
 PROFILE = AgentProfile(
     agent=AGENT,
     surfaces=SURFACES,
     roots=roots,
+    session_paths=session_paths,
+    imported=imported,
+    import_closure=import_closure,
     pinned=(
         "CLAUDE.md",
         ".claude/CLAUDE.md",

@@ -14,8 +14,8 @@ parent folder, or in the home directory alike), case-insensitively:
 
 from __future__ import annotations
 
-import fnmatch
 import os
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -62,6 +62,16 @@ class AgentProfile:
     """Runtime-discovered folders (settings, env vars). Must be cheap and never raise."""
     pinned: tuple[str, ...] = field(default=())
     """Well-known files compared by inode, so a hard link to one is still recognized."""
+    session_paths: Callable[[Path], list[Path]] | None = None
+    """Files/folders *outside* the project tree whose protected files load into sessions
+    for this project (parent-folder instructions, user-level files, per-project memory).
+    Used by SessionStart discovery. Must be cheap and never raise."""
+    imported: Callable[[Path | None, Path], Surface | None] | None = None
+    """Is this (canonical) path pulled into sessions by an import in one of the agent's
+    instruction files? Runs on every Write/Edit for unprotected files: must be cheap."""
+    import_closure: Callable[[list[Path]], dict[Path, Surface]] | None = None
+    """Every existing file the given protected files import, directly or transitively, with
+    the surface to treat it as."""
 
 
 @lru_cache(maxsize=256)
@@ -69,14 +79,42 @@ def _split(pattern: str) -> tuple[str, ...]:
     return tuple(part.casefold() for part in pattern.strip("/").split("/") if part)
 
 
+_SEP = "\x00"
+"""Joins path parts for regex matching; can't occur in a file name on any OS."""
+
+
+def _segment_rx(seg: str) -> str:
+    """One glob segment as a regex that stays within a single path part."""
+    return "".join("[^\x00]*" if c == "*" else "[^\x00]" if c == "?" else re.escape(c) for c in seg)
+
+
+@lru_cache(maxsize=256)
+def _compile(pat: tuple[str, ...]) -> re.Pattern[str]:
+    """Pattern segments (``**`` = any run of parts, including none) → one regex over the
+    parts joined by ``_SEP``. One regex match per pattern instead of a recursive glob,
+    which matters when discovery checks hundreds of files."""
+    out, first, pending_any = "", True, False
+    for seg in pat:
+        if seg == "**":
+            pending_any = True
+            continue
+        if not first:
+            out += _SEP
+        if pending_any:
+            out += "(?:[^\x00]*\x00)*"
+            pending_any = False
+        out += _segment_rx(seg)
+        first = False
+    if pending_any:
+        out += "(?:[^\x00]*(?:\x00[^\x00]*)*)?" if first else "(?:\x00[^\x00]*)*"
+    return re.compile(out, re.DOTALL)
+
+
 def _match(pat: tuple[str, ...], parts: tuple[str, ...]) -> bool:
     """Full match of pattern segments against path segments (``**`` = any run)."""
-    if not pat:
-        return not parts
-    head, rest = pat[0], pat[1:]
-    if head == "**":
-        return any(_match(rest, parts[i:]) for i in range(len(parts) + 1))
-    return bool(parts) and fnmatch.fnmatchcase(parts[0], head) and _match(rest, parts[1:])
+    if not parts:
+        return all(seg == "**" for seg in pat)
+    return _compile(pat).fullmatch(_SEP.join(parts)) is not None
 
 
 def matches(pattern: str, parts: tuple[str, ...], home_parts: tuple[str, ...]) -> bool:
@@ -94,6 +132,12 @@ def under(directory_parts: tuple[str, ...], tail: str, parts: tuple[str, ...]) -
 
 
 def home_parts() -> tuple[str, ...]:
+    """The home folder's normalized parts. Cached per value of ``~`` (tests change it)."""
+    return _home_parts(os.path.expanduser("~"))
+
+
+@lru_cache(maxsize=8)
+def _home_parts(home: str) -> tuple[str, ...]:
     from memtegrity.paths import key, resolve_path  # local: avoid import cycle
 
-    return key(resolve_path(os.path.expanduser("~")))
+    return key(resolve_path(home))

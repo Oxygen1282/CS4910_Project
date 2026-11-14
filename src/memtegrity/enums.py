@@ -39,6 +39,7 @@ class HookEvent(StrEnum):
 
     SESSION_START = "session-start"
     PRE_TOOL_USE = "pre-tool-use"
+    POST_TOOL_USE = "post-tool-use"
     FILE_CHANGED = "file-changed"
     CONFIG_CHANGE = "config-change"
 

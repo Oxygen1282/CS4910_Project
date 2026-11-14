@@ -23,6 +23,34 @@ def set_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> Path:
     return home
 
 
+@pytest.fixture(autouse=True)
+def _isolated_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Every test gets its own Memtegrity data folder (database, markers), so no test can
+    read or write a developer's real one, and the session's project can't leak in."""
+    data = tmp_path / "plugin-data"
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(data))
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    return data
+
+
+@pytest.fixture
+def home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """An empty fake home folder."""
+    h = tmp_path / "home"
+    h.mkdir()
+    return set_home(monkeypatch, h)
+
+
+@pytest.fixture
+def project(tmp_path: Path, home: Path) -> Path:
+    """A small project with a CLAUDE.md that imports docs/setup.md."""
+    p = tmp_path / "proj"
+    (p / "docs").mkdir(parents=True)
+    (p / "CLAUDE.md").write_bytes(b"# Notes\n- Use pnpm.\n- Setup: see @docs/setup.md\n")
+    (p / "docs" / "setup.md").write_bytes(b"Run pnpm install.\n")
+    return p
+
+
 def symlink_or_skip(link: Path, target: Path, *, target_is_directory: bool = False) -> None:
     """Create a symlink, or skip the test where the OS doesn't allow it (Windows without
     Developer Mode or admin rights). The behavior under test still runs on CI's Linux,

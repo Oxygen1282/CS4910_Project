@@ -5,7 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA:-$HOME/.cache/memtegrity}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook session-start"
+            "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA:-$HOME/.cache/memtegrity}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook session-start",
+            "timeout": 600
           }
         ]
       }
@@ -17,6 +18,18 @@
           {
             "type": "command",
             "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA:-$HOME/.cache/memtegrity}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook pre-tool-use",
+            "timeout": 300
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA:-$HOME/.cache/memtegrity}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook post-tool-use",
             "timeout": 60
           }
         ]

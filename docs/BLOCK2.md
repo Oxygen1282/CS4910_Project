@@ -1,5 +1,7 @@
 # Block 2 guide: memory history, audit trail, between-session checks
 
+> **Done** (see the Block 2 PR for what was built and the decisions taken). Next: [BLOCK3.md](BLOCK3.md).
+
 **For:** whoever builds Block 2 (and their coding agent). Read this file first.
 **Prerequisite:** Block 1 (`feat/block1-guard`) is merged into `main`.
 **Needs no API key.** Everything here is local: Python, SQLite, files. The Claude API is first needed in Block 4.

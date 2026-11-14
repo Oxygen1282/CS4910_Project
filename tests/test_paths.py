@@ -155,3 +155,60 @@ def test_win32_aliases_classify_as_memory(proj: Path) -> None:
     for alias in ("CLAUDE.md.", "CLAUDE.md ", "CLAUDE.md::$DATA"):
         assert is_memory_path(proj / alias, proj), alias
     assert is_memory_path(str(proj) + r"\.claude::$INDEX_ALLOCATION\settings.json", proj)
+
+
+# --------------------------------------------------------------------------- Block 2
+
+
+def test_data_dir_uses_plugin_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from memtegrity.paths import data_dir
+
+    monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path / "pd"))
+    assert data_dir() == tmp_path / "pd" and (tmp_path / "pd").is_dir()
+
+
+def test_data_dir_fallback_matches_hooks_json(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from memtegrity.paths import data_dir
+
+    monkeypatch.delenv("CLAUDE_PLUGIN_DATA")
+    assert data_dir() == home / ".cache" / "memtegrity"  # = $HOME/.cache/memtegrity
+    assert data_dir().is_dir()
+
+
+def test_list_memory_files(proj: Path, home: Path) -> None:
+    from memtegrity.agents.claude_code import auto_memory_dirs
+    from memtegrity.paths import list_memory_files
+
+    (proj / ".claude" / "rules").mkdir()
+    (proj / ".claude" / "rules" / "style.md").write_text("x", encoding="utf-8")
+    (proj / "node_modules" / "pkg").mkdir(parents=True)
+    (proj / "node_modules" / "pkg" / "CLAUDE.md").write_text("x", encoding="utf-8")  # skipped
+    (proj / "src").mkdir()
+    (proj / "src" / "app.py").write_text("x", encoding="utf-8")
+    (home / ".claude").mkdir()
+    (home / ".claude" / "CLAUDE.md").write_text("x", encoding="utf-8")
+    mem = auto_memory_dirs(resolve_path(proj))[0]
+    mem.mkdir(parents=True)
+    (mem / "MEMORY.md").write_text("x", encoding="utf-8")
+    (proj.parent / "CLAUDE.md").write_text("x", encoding="utf-8")  # parent folder: loads too
+
+    found = list_memory_files(proj)
+    real = {resolve_path(p) for p in found}
+    assert real == {
+        resolve_path(proj / "CLAUDE.md"),
+        resolve_path(proj / ".claude" / "rules" / "style.md"),
+        resolve_path(home / ".claude" / "CLAUDE.md"),
+        resolve_path(mem / "MEMORY.md"),
+        resolve_path(proj.parent / "CLAUDE.md"),
+    }
+    assert all(p.is_absolute() for p in found)
+
+
+def test_auto_memory_folder_name() -> None:
+    from memtegrity.agents.claude_code import _project_slug
+
+    assert _project_slug("/Users/me/my_app") == "-Users-me-my-app"
+    assert (
+        _project_slug(r"C:\Users\me\.vscode\VS Programs\app")
+        == "C--Users-me--vscode-VS-Programs-app"
+    )

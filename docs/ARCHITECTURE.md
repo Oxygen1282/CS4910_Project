@@ -33,12 +33,15 @@ Memtegrity protects the files AI coding agents load as **instructions**, **memor
 | `scoring.py` | Cluster nearby signals, combine with noisy-OR, apply provenance and user intent | No |
 | `engine.py` | One entry point used by every adapter and the scanner | Looks up a config analyzer by agent name |
 | `scan.py` | Scan a repository's agent files at rest | No |
+| `baseline.py` | Between-session check: compare files with approved snapshots, trust on first use, approvals | No |
+| `store.py` | SQLite: snapshots, baselines, hash-chained audit log, `verify_chain` | No |
 
 ## Per-agent pieces
 
 | Piece | Claude Code (built) | Another agent (later) |
 |---|---|---|
 | **Which files** (`agents/<agent>.py`, an `AgentProfile`) | `claude_code.py` | Already listed in `others.py` for 6 agents/standards |
+| **Files outside the project that load into its sessions** (`session_paths`) and **imports** (`imported`, `import_closure`) | `~/.claude`, parent-folder CLAUDE.md, auto memory; `@path` imports | Optional (e.g. Gemini CLI also has `@` imports) |
 | **Session record → `Evidence`** (for provenance) | `evidence_from_transcript` (JSONL transcript) | Write a parser for that agent's log format |
 | **Config analyzer** (structure of settings files) | `assess_config` (hooks, MCP, permissions, env) | Optional: until then, config changes are judged by text rules and default to "ask" |
 | **Real-time adapter** (hook protocol in → engine → protocol out) | `hooks.py` + `hooks/hooks.json` | One module per agent that has hooks |
@@ -61,6 +64,11 @@ Memtegrity protects the files AI coding agents load as **instructions**, **memor
 | Enforcement in hooks, not in instructions | Enforcement outside the protected system (Anthropic's docs: memory is "context, not enforced configuration") | `hooks.py` |
 | Never answer "allow" | Least privilege: "allow" would skip the user's own permission prompt | `hooks.py` |
 | Errors → "ask" | Fail securely | `hooks.run_hook` |
+| Audit failures never change a decision | A broken database must not open the gate | `hooks.handle_pre_tool_use` |
+| Trust on first use, except what the rules call "deny" | Usability without blindly trusting a pre-poisoned repo | `baseline.check` |
+| A flagged change stays flagged until the user approves it | The approved version stays the reference; no silent drift | `baseline.check` |
+| Only content the user approved *in the permission prompt* becomes the baseline | The same text written another way (Bash) isn't approved | `hooks.handle_post_tool_use` |
+| Hash-chained audit log, serialized writers | Tamper evidence; integrity of the record | `store.record_change`, `store.verify_chain` |
 | Resolve paths before deciding | Canonicalize before authorizing (path traversal, symlinks, case, hard links; on Windows also `CLAUDE.md.`, `CLAUDE.md::$DATA`, `.claude::$INDEX_ALLOCATION`) | `paths.py` |
 | Decode hook input as UTF-8 ourselves | Windows' default code page (cp1252) would garble hidden-Unicode payloads into text the rules can't see | `hooks.read_stdin` |
 | Bounded regex gaps, bounded negation look-back | No ReDoS: the PreToolUse hook must not be stallable by a crafted long line | `rules.py` |
@@ -77,6 +85,8 @@ The PreToolUse hook runs on **every** Write/Edit, so:
 - The hook path imports only `paths`, `surfaces`, `enums` and `agents` (no Pydantic or SQLAlchemy). Non-protected files take ≈0.1 s, most of it `uv` start-up.
 - The analysis stack loads only for protected files (≈0.5 s).
 - Pydantic models build lazily (`defer_build`), database tables load lazily (`tables.py`), and `entry.py` skips the CLI framework for hooks.
+- PreToolUse touches the database only after an ask/deny; PostToolUse only if a small marker file says the content was asked about. Ordinary writes never load SQLModel.
+- SessionStart finds files with a cheap name check first and compiled glob regexes, reads every approved hash in one query, and stops walking after 0.8 s (the user is told if the check was partial). Measured on a slow Windows laptop: ~0.6 s of work for 45 files, plus ~2 s of one-time imports per process (Python, SQLModel). The very first run is slower (it analyzes every file).
 
 ## Provisional numbers
 
