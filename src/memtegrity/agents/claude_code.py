@@ -86,6 +86,8 @@ def roots(project_dir: Path | None) -> list[Root]:
 # * ``~/.claude.json``: Claude Code rewrites it every session (counters, history), so it
 #   would "change" every time; its MCP servers are a ConfigChange concern (Block 6).
 # * installed plugins: they change on every plugin update.
+# * ``~/.claude/skills/synced``: skills the Claude app syncs from the user's account; like
+#   plugins, they are managed for the user and change on every sync.
 
 
 def _project_slug(path: str) -> str:
@@ -126,12 +128,24 @@ _USER_ITEMS = (
 )
 
 
+_MANAGED_SKILL_DIRS = frozenset({"synced", ".trash"})
+
+
+def _user_skill_dirs(skills: Path) -> list[Path]:
+    """The user's own skills, without app-synced skills or deleted ones (see above)."""
+    try:
+        return [p for p in skills.iterdir() if p.name.casefold() not in _MANAGED_SKILL_DIRS]
+    except OSError:
+        return []
+
+
 def session_paths(project_dir: Path) -> list[Path]:
     """Places outside the project tree that load into its sessions: CLAUDE.md files in
     parent folders, the user's ``~/.claude`` instructions and settings, and this project's
     auto memory (default or ``autoMemoryDirectory``)."""
     cfg = _config_dir()
-    out = [cfg / item for item in _USER_ITEMS]
+    out = [cfg / item for item in _USER_ITEMS if item != "skills"]
+    out += _user_skill_dirs(cfg / "skills")
     out += [d / name for d in project_dir.parents for name in _ANCESTOR_FILES]
     out += auto_memory_dirs(project_dir)
     out += _custom_memory_dirs(project_dir)

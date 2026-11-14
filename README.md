@@ -166,7 +166,7 @@ uv run --project ~/CS4910_Project memtegrity status
 uv run --project ~/CS4910_Project memtegrity baseline
 ```
 
-The CLI and the plugin share one database only if they use the same data folder: inside Claude Code that is `$CLAUDE_PLUGIN_DATA` (under `~/.claude/plugins/data/`); outside it, `~/.cache/memtegrity`. Point the CLI at the plugin's folder with `CLAUDE_PLUGIN_DATA=<that folder> uv run …`. (The `/memtegrity:*` skills, a later block, will run inside Claude Code and won't need this.)
+The CLI and the plugin share one database only if they use the same data folder: inside Claude Code that is `$CLAUDE_PLUGIN_DATA` (under `~/.claude/plugins/data/`; with `--plugin-dir` it's `memtegrity-inline`); outside it, `~/.cache/memtegrity`. Point the CLI at the plugin's folder with `CLAUDE_PLUGIN_DATA=<that folder> uv run …`. (The `/memtegrity:*` skills, a later block, will run inside Claude Code and won't need this.)
 
 Scan a repository's agent files (Claude Code, AGENTS.md, Copilot, Cursor, Windsurf, Gemini CLI, Cline):
 

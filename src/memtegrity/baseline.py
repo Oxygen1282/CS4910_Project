@@ -54,6 +54,19 @@ class Finding:
     assessment: Assessment
     event_id: int | None = None
     """The audit-log event (``None`` if this exact content was already recorded)."""
+    first_check: bool = False
+    """Found on the project's first check (never approved), not changed since one."""
+
+    @property
+    def how(self) -> str:
+        """Why the file is listed, for messages."""
+        if self.first_check:
+            return "was found on Memtegrity's first check of this project"
+        if self.file_event is FileEventKind.ADD:
+            return "was added since the last session"
+        if self.file_event is FileEventKind.UNLINK:
+            return "was deleted since the last session"
+        return "changed since it was last approved"
 
 
 @dataclass
@@ -201,7 +214,9 @@ def check(
             continue
 
         # Flagged: keep the approved version as the reference; record once per content.
-        finding = Finding(path, surface, kind, assessment)
+        finding = Finding(
+            path, surface, kind, assessment, first_check=result.first_run and approved is None
+        )
         if store.find_change(db, p, sha, source=source.value) is None:
             pending = store.find_snapshot(
                 db, p, sha, SnapshotStatus.PENDING

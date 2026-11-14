@@ -54,7 +54,9 @@ Suggested order: 1 → 2 → 3 → 4 → 5 → 6 → 7.
 ## 5. Known Block 2 limits you may run into
 
 - `baseline.check` trusts on first use, except files the rules alone call `deny`.
-- `~/.claude.json` and installed plugins aren't baselined (they change on their own every session/update); PreToolUse still guards writes to them.
+- `~/.claude.json`, installed plugins and app-synced skills (`~/.claude/skills/synced`) aren't baselined (they change on their own every session/update/sync); PreToolUse still guards writes to them.
+- The rules flag text that *quotes* attack phrases (a live run flagged Anthropic's synced `import-memory` skill, which warns about "ignore previous instructions"). That's a scoring false positive for Block 4/6, not a reason to change numbers now.
+- Live testing: `claude -p "…" --plugin-dir <repo> --output-format stream-json --verbose` runs a real session headlessly and shows hook responses; with `--plugin-dir` the plugin's data folder is `~/.claude/plugins/data/memtegrity-inline`. Claude refuses obvious poison by itself, so test the guard with plausible-looking lines (e.g. a `curl … | bash` "setup step").
 - At write time, `@import`s are followed only from always-loaded files (see THREATS.md).
 - The hash chain detects edits and deletions of *earlier* rows; dropping the newest rows needs the chain head recorded elsewhere (`memtegrity status` prints it).
 

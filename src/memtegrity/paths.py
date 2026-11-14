@@ -171,9 +171,20 @@ def is_memory_path(path: str | os.PathLike[str], project_dir: Path | None = None
 # --------------------------------------------------------------------------- discovery
 
 SKIP_DIRS = frozenset(
-    {".git", "node_modules", ".venv", "venv", "__pycache__", "dist", "build", ".tox", ".mypy_cache"}
+    {
+        ".git",
+        "node_modules",
+        ".venv",
+        "venv",
+        "__pycache__",
+        "dist",
+        "build",
+        ".tox",
+        ".mypy_cache",
+        ".trash",  # deleted items (e.g. ~/.claude/skills/.trash): never loaded
+    }
 )
-"""Vendored / generated folders that are never walked."""
+"""Vendored / generated / deleted-item folders that are never walked."""
 
 MAX_FILE_BYTES = 1_000_000
 """Protected files larger than this are listed but not snapshotted or analyzed."""
