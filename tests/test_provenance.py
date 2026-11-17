@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 import pytest
+from conftest import set_home
 
 from memtegrity import provenance
 from memtegrity.agents.claude_code import evidence_from_transcript
@@ -154,7 +155,7 @@ def test_missing_transcript_is_none(tmp_path: Path) -> None:
 
 @pytest.fixture
 def proj(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    set_home(monkeypatch, tmp_path / "home")
     p = tmp_path / "proj"
     p.mkdir()
     (p / "CLAUDE.md").write_text(BASE)

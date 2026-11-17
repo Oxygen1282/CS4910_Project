@@ -137,6 +137,8 @@ _NEGATION_RX = re.compile(
     r"\b(?:never|don'?t|do not|does not|must not|mustn'?t|should not|shouldn'?t|avoid|"
     r"no|not|prohibit\w*|forbid\w*|ban\w*)\b[^.;\n]{0,40}$"
 )
+_NEGATION_WINDOW = 120
+"""How far back to look for a negation: the 40-char gap above plus the longest word."""
 
 
 def _regex(pattern: str, *, raw: bool = False, negatable: bool = False) -> Finder:
@@ -148,8 +150,12 @@ def _regex(pattern: str, *, raw: bool = False, negatable: bool = False) -> Finde
         text = view.raw if raw else view.norm
         for m in rx.finditer(text):
             if negatable:
-                line_start = text.rfind("\n", 0, m.start()) + 1
-                if _NEGATION_RX.search(text[line_start : m.start()]):
+                # A negation must end within 40 chars of the match (see _NEGATION_RX), so a
+                # short window gives the same answer; scanning from the line start made
+                # long lines with many matches quadratic (a hook-stalling ReDoS).
+                window_start = max(0, m.start() - _NEGATION_WINDOW)
+                line_start = text.rfind("\n", window_start, m.start()) + 1  # 0 if none
+                if _NEGATION_RX.search(text[max(line_start, window_start) : m.start()]):
                     continue
             yield Match(view.line_at(m.start(), raw=raw), m.group(0))
 
@@ -387,9 +393,14 @@ RULES: list[Rule] = [
         55,
         C.CREDENTIAL_ACCESS,
         _regex(
-            r"~/\.ssh|\.ssh/|\bid_(?:rsa|ed25519|ecdsa|dsa)\b|\.aws/credentials|\.netrc\b|"
-            r"\.pgpass\b|\.docker/config\.json|\bkeychain\b|private[ _-]?keys?\b|\.gnupg\b|"
-            r"\.kube/config|\bkubeconfig\b|seed phrase|\.git-credentials"
+            # Paths accept / and \ (Windows: C:\Users\me\.ssh, %USERPROFILE%\.aws\credentials).
+            r"~[/\\]\.ssh|\.ssh[/\\]|\bid_(?:rsa|ed25519|ecdsa|dsa)\b|\.aws[/\\]credentials|"
+            r"[._]netrc\b|\.pgpass\b|\.docker[/\\]config\.json|\bkeychain\b|"
+            r"private[ _-]?keys?\b|\.gnupg\b|\.kube[/\\]config|\bkubeconfig\b|seed phrase|"
+            r"\.git-credentials|"
+            # Windows credential stores.
+            r"\bcredential manager\b|\bcmdkey\b|\bvaultcmd\b|\bdpapi\b|"
+            r"\b(?:sam|security)\s+hive\b|\bntds\.dit\b|\blsass\b"
         ),
         directive=True,
     ),
@@ -414,7 +425,17 @@ RULES: list[Rule] = [
             r"(?:(?:ba|z|da|k|c)?sh|python3?|node|perl|ruby|iex)\b|"
             r"\b(?:ba|z)?sh\s+(?:-c\s+)?[\"']?\$?<\(\s*(?:curl|wget)\b|"
             r"\beval\s+[\"']?\$\(\s*(?:curl|wget)\b|"
-            r"\bbase64\s+(?:-d|--decode|-d\s+-i)\b[^\n|]*\|\s*(?:ba|z)?sh\b"
+            r"\bbase64\s+(?:-d|--decode|-d\s+-i)\b[^\n|]*\|\s*(?:ba|z)?sh\b|"
+            # PowerShell: iex (iwr ...), iex (New-Object Net.WebClient).DownloadString(...),
+            # powershell -EncodedCommand, and Windows living-off-the-land downloaders.
+            r"\b(?:iex|invoke-expression)\b[^\n]{0,20}\(?\s*(?:iwr|irm|invoke-webrequest|"
+            r"invoke-restmethod|\(?\s*new-object\s+(?:system\.)?net\.webclient)\b|"
+            r"\.downloadstring\s*\(|"
+            # Gaps are bounded ({0,120}): an unbounded gap is quadratic on long lines (ReDoS).
+            r"\b(?:powershell|pwsh)(?:\.exe)?\b[^\n]{0,120}?\s-(?:e|enc|encodedcommand)\s+"
+            r"[a-z0-9+/=]{16,}|"
+            r"\bcertutil(?:\.exe)?\b[^\n]{0,120}?-urlcache\b|\bmshta(?:\.exe)?\s+https?:|"
+            r"\bregsvr32\b[^\n]{0,120}?/i:https?:"
         ),
         directive=True,
     ),
@@ -427,7 +448,13 @@ RULES: list[Rule] = [
             r"\bgit\s+push\b[^\n]*?\s(?:-f|--force)(?:\s|$)|\bgit\s+reset\s+--hard\b|"
             r"\bgit\s+clean\s+-[a-z]*f|\brm\s+-(?:[a-z]*r[a-z]*f|[a-z]*f[a-z]*r)[a-z]*\b|"
             r"\bdrop\s+(?:table|database|schema)\b|\btruncate\s+table\b|"
-            r"\bchmod\s+-r\s+777\b|\bmkfs\b|\bdd\s+if=",
+            r"\bchmod\s+-r\s+777\b|\bmkfs\b|\bdd\s+if=|"
+            # Windows: Remove-Item -Recurse -Force, rd/rmdir /s /q, del /s /q, format C:
+            # (gaps bounded to {0,120}: unbounded ones are quadratic on long lines)
+            r"\b(?:remove-item|ri|rm)\b[^\n]{0,120}?-recurse\b[^\n]{0,120}?-force\b|"
+            r"\b(?:remove-item|ri|rm)\b[^\n]{0,120}?-force\b[^\n]{0,120}?-recurse\b|"
+            r"\b(?:rd|rmdir)\s+/s\b|\b(?:del|erase)\s+(?:/[a-z]\s+){0,6}/s\b|"
+            r"\bformat(?:\.com)?\s+[a-z]:|\bvssadmin\b[^\n]{0,120}?\bdelete\s+shadows\b",
             negatable=True,
         ),
         directive=True,
@@ -442,6 +469,14 @@ RULES: list[Rule] = [
             r"\bnode_tls_reject_unauthorized\s*=?\s*['\"]?0\b|\brejectunauthorized\s*:\s*false\b|"
             r"\bstricthostkeychecking\s*=?\s*no\b|\buserknownhostsfile\s*=?\s*/dev/null\b|"
             r"--no-verify\b|\bgit_ssl_no_verify\b|--disable-web-security\b|"
+            # Windows: execution policy, Defender, SmartScreen, UAC.
+            r"\bexecutionpolicy\s+(?:bypass|unrestricted)\b|"
+            # (gaps bounded to {0,120}: unbounded ones are quadratic on long lines)
+            r"\bset-mppreference\b[^\n]{0,120}?-disable\w*|"
+            r"\badd-mppreference\b[^\n]{0,120}?-exclusion\w*|"
+            r"\b(?:disable|turn off)\s+(?:windows\s+)?(?:defender|smartscreen|uac)\b|"
+            r"\benablelua\b[^\n]{0,40}?\b0\b|\bservercertificatevalidationcallback\b|"
+            r"\bskipcertificatecheck\b|"
             r"\b(?:disable|turn off|skip|bypass|ignore)\s+(?:the\s+|all\s+)?(?:tls|ssl|https|"
             r"certificate|cert|signature|checksum|integrity|2fa|mfa|csrf)\b",
             negatable=True,

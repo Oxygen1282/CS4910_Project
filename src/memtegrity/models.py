@@ -32,7 +32,7 @@ from memtegrity.enums import (
 )
 
 if TYPE_CHECKING:  # for editors and type checkers; at runtime see __getattr__ below
-    from memtegrity.tables import ChangeEvent, Snapshot  # noqa: F401
+    from memtegrity.tables import ChangeEvent, ProjectBaseline, Snapshot  # noqa: F401
 
 __all__ = [
     "Assessment",
@@ -41,6 +41,7 @@ __all__ = [
     "FileEventKind",
     "HookEvent",
     "LLMRisk",
+    "ProjectBaseline",
     "ReplayResult",
     "RiskCategory",
     "RuleHit",
@@ -69,7 +70,7 @@ class _Model(BaseModel):
 # ``Snapshot`` and ``ChangeEvent`` live in ``tables.py`` and load on first use (PEP 562), so
 # code that doesn't touch the database (the PreToolUse hook) never imports SQLModel.
 
-_LAZY_TABLES = {"Snapshot", "ChangeEvent"}
+_LAZY_TABLES = {"Snapshot", "ChangeEvent", "ProjectBaseline"}
 
 
 def __getattr__(name: str) -> Any:

@@ -3,7 +3,6 @@
 import pytest
 
 import memtegrity
-from memtegrity import store
 from memtegrity.hooks import HANDLERS
 from memtegrity.models import HookEvent
 
@@ -17,6 +16,10 @@ def test_every_hook_event_has_a_handler() -> None:
 
 
 def test_stubs_are_not_implemented_yet() -> None:
-    # Replace this with real tests as each TODO is implemented.
+    # Replace this with real tests as each TODO is implemented (Block 3: recovery).
+    from pathlib import Path
+
+    from memtegrity import recovery
+
     with pytest.raises(NotImplementedError):
-        store.get_engine(None)  # type: ignore[arg-type]
+        recovery.is_own_write(Path("CLAUDE.md"), "0" * 64)

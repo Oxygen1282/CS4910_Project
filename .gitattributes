@@ -1,0 +1,14 @@
+# Same line endings on every OS. Without this, Windows clones (core.autocrlf=true) check
+# files out with CRLF, so the plugin's own files differ by platform and diffs get noisy.
+* text=auto eol=lf
+
+# Binary files: never touch.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.mp4 binary
+*.pdf binary
+*.docx binary
+*.pptx binary
+*.db binary

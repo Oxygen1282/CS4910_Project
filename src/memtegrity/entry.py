@@ -5,6 +5,7 @@ the CLI framework (Typer/Rich) and the database layer. Every other command goes 
 full Typer app in ``cli.py``.
 """
 
+import contextlib
 import sys
 
 
@@ -23,9 +24,20 @@ def main() -> None:
             emit(event)
             return
 
+    _no_encoding_crashes()
     from memtegrity.cli import app
 
     app()
+
+
+def _no_encoding_crashes() -> None:
+    """On Windows, piped output (pre-commit, CI) uses a legacy code page; printing a path or
+    evidence snippet it can't encode would crash the scan. Replace such characters instead."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            with contextlib.suppress(OSError, ValueError):
+                reconfigure(errors="replace")
 
 
 if __name__ == "__main__":

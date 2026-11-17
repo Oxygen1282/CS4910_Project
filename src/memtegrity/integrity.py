@@ -97,7 +97,7 @@ def apply_edit(current: str, old_string: str, new_string: str, replace_all: bool
     """Return the content an Edit tool call *would* produce, without touching the file.
 
     Mirrors Claude Code's Edit: replace the single occurrence of ``old_string``, or every
-    occurrence when ``replace_all`` is true.
+    occurrence when ``replace_all`` is true. An LF ``old_string`` also matches a CRLF file.
 
     Raises ``EditSimulationError`` if the result can't be predicted exactly. Callers must then
     score ``new_string`` on its own rather than allow the write: Claude Code may still apply
@@ -106,6 +106,12 @@ def apply_edit(current: str, old_string: str, new_string: str, replace_all: bool
     if old_string == "":
         raise EditSimulationError("empty old_string")
     count = current.count(old_string)
+    if count == 0 and "\r\n" in current and "\n" in old_string and "\r" not in old_string:
+        # Windows (CRLF) file, LF edit: Claude Code matches across line endings and keeps
+        # the file's CRLF, so do the same.
+        old_string = old_string.replace("\n", "\r\n")
+        new_string = new_string.replace("\r\n", "\n").replace("\n", "\r\n")
+        count = current.count(old_string)
     if count == 0:
         raise EditSimulationError("old_string not found")
     if count > 1 and not replace_all:

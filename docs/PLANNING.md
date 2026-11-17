@@ -30,7 +30,14 @@ Smaller things to agree on:
 - **Scope:** real-time protection is Claude Code only for this project, but everything is built so other agents can be added without a rewrite (agent-neutral core, per-agent registry). See `docs/ARCHITECTURE.md`. Other agents' instruction files are already protected when Claude writes them, and covered by `memtegrity scan`.
 - **Scoring:** the current weights and thresholds are provisional (hand-set from the threat research). A later block calibrates them on the labeled dataset.
 - **Provenance** (did new memory text come from the user or from content Claude read?) is part of Block 1.
-- **Workflow:** we work in blocks, one person at a time. Each block ends with a PR and a `docs/BLOCK<n+1>.md` guide for the next person. Current: [BLOCK2.md](BLOCK2.md).
+- **Workflow:** we work in blocks, one person at a time. Each block ends with a PR and a `docs/BLOCK<n+1>.md` guide for the next person. Current: [BLOCK3.md](BLOCK3.md).
+
+## Decisions made (Nov 14, Block 2)
+- Model changes are fine if listed in the PR.
+- First baseline is silent apart from one line: "Memtegrity is now protecting N files."
+- SessionStart may take about 1 second of work.
+- First-run timeout fixed: PreToolUse timeout raised to 300 s; SessionStart (600 s) runs first and builds the environment.
+- `@import` targets are protected, with `/` and `\` paths.
 
 ## Risks
 1. **PreToolUse latency.** Claude waits while we score. Keep the LLM call short with a timeout (`llm_timeout_seconds`), fall back to rules only, and measure it.

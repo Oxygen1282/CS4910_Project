@@ -53,7 +53,8 @@ class ChangeEvent(SQLModel, table=True):
     surface_kind: SurfaceKind | None = None
     """instructions / memory / config."""
     source: HookEvent
-    """Which hook detected it: PreToolUse (attempted write), FileChanged or SessionStart."""
+    """Which hook detected it: PreToolUse (attempted write), PostToolUse (a write the user
+    approved), FileChanged or SessionStart."""
     file_event: FileEventKind = FileEventKind.CHANGE
     """change / add / unlink."""
     tool_name: str | None = None
@@ -82,3 +83,25 @@ class ChangeEvent(SQLModel, table=True):
     """True if Memtegrity restored the file to the last approved snapshot."""
     created_at: datetime = Field(default_factory=_utcnow)
     """When the change was detected (UTC)."""
+    note: str | None = None
+    """Free-text context, e.g. "first baseline" or "approved in a permission prompt"."""
+
+    # ---- tamper evidence (hash chain; set by ``store.record_change``, checked by
+    # ``store.verify_chain``). ``replay_json`` and ``restored`` are filled in later and are
+    # therefore NOT covered: later blocks record a new event instead of trusting them.
+    prev_hash: str | None = None
+    """``record_hash`` of the previous event (64 zeros for the first one)."""
+    record_hash: str | None = Field(default=None, index=True)
+    """SHA-256 of ``prev_hash`` + this record's canonical JSON."""
+
+
+class ProjectBaseline(SQLModel, table=True):
+    """Marks a project whose files were approved once (trust on first use). Before that,
+    every protected file is new; after it, a new file is a change to be judged."""
+
+    id: int | None = Field(default=None, primary_key=True)
+    project: str = Field(index=True, unique=True)
+    """Canonical absolute path of the project folder."""
+    file_count: int = 0
+    """How many protected files the first baseline approved."""
+    created_at: datetime = Field(default_factory=_utcnow)
