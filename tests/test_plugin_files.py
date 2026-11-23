@@ -33,6 +33,8 @@ def test_hooks_call_known_cli_events() -> None:
         "PostToolUse",
         "FileChanged",
         "ConfigChange",
+        "UserPromptSubmit",
+        "PostToolUseFailure",
     }
     cli_names = {e.value for e in HookEvent}
     for groups in hooks.values():

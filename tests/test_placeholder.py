@@ -15,11 +15,9 @@ def test_every_hook_event_has_a_handler() -> None:
     assert set(HANDLERS) == set(HookEvent)
 
 
-def test_stubs_are_not_implemented_yet() -> None:
-    # Replace this with real tests as each TODO is implemented (Block 3: recovery).
-    from pathlib import Path
-
-    from memtegrity import recovery
+def test_remaining_stubs_are_not_implemented_yet() -> None:
+    # The AI judge is the next block's work (docs/BLOCK4.md).
+    from memtegrity import llm_risk
 
     with pytest.raises(NotImplementedError):
-        recovery.is_own_write(Path("CLAUDE.md"), "0" * 64)
+        llm_risk.score_with_llm("", "CLAUDE.md", [])

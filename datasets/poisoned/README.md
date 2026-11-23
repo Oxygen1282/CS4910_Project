@@ -9,4 +9,4 @@ Each example needs hand-written `test_prompts` that would make the poison show u
 
 Format: see [`../README.md`](../README.md). `label` is `"poisoned"`.
 
-TODO(B): write the examples.
+TODO(Block 6): write the examples.

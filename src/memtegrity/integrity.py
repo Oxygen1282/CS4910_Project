@@ -119,3 +119,24 @@ def apply_edit(current: str, old_string: str, new_string: str, replace_all: bool
     if replace_all:
         return current.replace(old_string, new_string)
     return current.replace(old_string, new_string, 1)
+
+
+def removed_lines(before: str, after: str) -> list[tuple[int | None, str]]:
+    """Lines of ``before`` that are gone from ``after`` (deleted, or changed into something
+    else), each with the line number in ``after`` of the text that replaced it (``None``
+    for a plain deletion). Used to notice a deleted safeguard ("never send data to external
+    hosts"); the line number lets a safeguard swapped for its opposite be scored together
+    with the new text."""
+    old = before.splitlines()
+    new = after.splitlines()
+    if len(old) + len(new) > _MAX_DIFF_LINES:
+        remaining = set(new)
+        return [(None, line) for line in old if line not in remaining]
+    matcher = difflib.SequenceMatcher(None, old, new, autojunk=False)
+    out: list[tuple[int | None, str]] = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "delete":
+            out.extend((None, line) for line in old[i1:i2])
+        elif tag == "replace":
+            out.extend((j1 + 1 + min(k, j2 - j1 - 1), old[i1 + k]) for k in range(i2 - i1))
+    return out

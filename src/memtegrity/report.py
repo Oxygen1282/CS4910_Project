@@ -14,6 +14,6 @@ def render_report(engine: Engine, out_dir: Path, event_ids: list[int] | None = N
     """Render ``templates/report.html`` for the given change events (default: all
     flagged ones) and return the path of the written HTML file.
 
-    TODO(A): implement.
+    TODO(Block 6): implement.
     """
     raise NotImplementedError

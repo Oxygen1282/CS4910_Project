@@ -12,7 +12,7 @@ from memtegrity.models import ToolCall
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = []
 """Claude API tool schemas mirroring Claude Code's Bash, Read, Write, Edit and WebFetch
-(names and input fields), with ``strict: true``. TODO(B): fill in."""
+(names and input fields), with ``strict: true``. TODO(Block 5): fill in."""
 
 
 class FakeToolbox:
@@ -21,14 +21,14 @@ class FakeToolbox:
     def __init__(self, files: dict[str, str] | None = None) -> None:
         """``files`` is an optional fake file system (path → content) for Read to return.
 
-        TODO(B): implement.
+        TODO(Block 5): implement.
         """
         raise NotImplementedError
 
     def call(self, name: str, tool_input: dict[str, Any]) -> str:
         """Record the call and return a fake result string for the model.
 
-        TODO(B): implement.
+        TODO(Block 5): implement.
         """
         raise NotImplementedError
 
@@ -36,6 +36,6 @@ class FakeToolbox:
     def calls(self) -> list[ToolCall]:
         """All recorded calls, in order.
 
-        TODO(B): implement.
+        TODO(Block 5): implement.
         """
         raise NotImplementedError

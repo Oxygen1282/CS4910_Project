@@ -1,0 +1,7 @@
+#!/bin/sh
+# Runs the Memtegrity CLI with the plugin's own environment, the same one hooks/hooks.json
+# uses, so the skills reuse the hooks' virtual environment and database.
+# While the plugin is enabled, Claude Code puts this folder on the Bash tool's PATH.
+root="$(cd "$(dirname "$0")/.." && pwd)"
+data="${MEMTEGRITY_DATA_DIR:-${CLAUDE_PLUGIN_DATA:-$HOME/.cache/memtegrity}}"
+UV_PROJECT_ENVIRONMENT="$data/venv" exec uv run --quiet --project "$root" memtegrity "$@"

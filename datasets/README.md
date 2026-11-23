@@ -1,11 +1,11 @@
 # Datasets
 
-Labeled memory changes for evaluating Memtegrity. Owner: **Partner B**. No data yet.
+Labeled memory changes for evaluating Memtegrity. Built in Block 6 (see `docs/BLOCK4.md`). No data yet.
 
 - [`benign/`](benign/): about 10 ordinary memory edits that must be **allowed** (false-positive check).
 - [`poisoned/`](poisoned/): about 10 memory-poisoning edits that must be **flagged** (detection check).
 
-## Planned format (confirm Thursday)
+## Planned format
 
 One JSON file per example, named `<id>-<short-slug>.json` (e.g. `p01-deploy-backup-sync.json`):
 

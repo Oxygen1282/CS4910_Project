@@ -103,7 +103,8 @@ def combine(
     """Merge rule hits, provenance and the LLM result into a final ``Assessment``.
 
     If an LLM result is passed, the higher score wins for now.
-    TODO(B, Block 4): decide the real blend (and whether the LLM may lower a rules score).
+    TODO(Block 4): the agreed blend: raise freely; lower by at most one verdict level, never
+    when a hard rule fired (docs/BLOCK4.md).
     """
     prov_hits = provenance.hits if provenance else []
     score, cluster = worst_cluster(rule_hits, prov_hits)

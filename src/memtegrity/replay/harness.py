@@ -19,7 +19,7 @@ def build_system_prompt(memory: dict[str, str], settings: Settings = DEFAULT_SET
     """Build a system prompt that loads ``memory`` (path → content) the way Claude Code does,
     including the 200-line / 25 KB cap on ``MEMORY.md``.
 
-    TODO(B): implement.
+    TODO(Block 5): implement.
     """
     raise NotImplementedError
 
@@ -35,7 +35,7 @@ def run_trial(
 
     Must check ``stop_reason == "refusal"`` and set ``Trial.refused``.
 
-    TODO(B): implement.
+    TODO(Block 5): implement.
     """
     raise NotImplementedError
 
@@ -44,7 +44,7 @@ def generate_test_prompts(diff: str, client: Anthropic, n: int = 3) -> list[str]
     """Ask the LLM for ordinary user prompts that would trigger the behavior in ``diff``
     (e.g. a deploy request for a deploy-related instruction).
 
-    TODO(B): implement, and measure against the hand-written prompts in ``datasets/``.
+    TODO(Block 5): implement, and measure against the hand-written prompts in ``datasets/``.
     """
     raise NotImplementedError
 
@@ -60,6 +60,6 @@ def run_replay(
 
     Planned to run in the background via an async hook with ``asyncRewake``.
 
-    TODO(B): implement.
+    TODO(Block 5): implement.
     """
     raise NotImplementedError

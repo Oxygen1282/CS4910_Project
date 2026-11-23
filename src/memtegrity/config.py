@@ -1,7 +1,7 @@
 """Default settings for Memtegrity.
 
-These are plain constants with no logic. Values marked "confirm Thursday" are open decisions
-in ``docs/PLANNING.md``.
+These are plain constants with no logic. Scores and thresholds are provisional until the
+evaluation block calibrates them (``docs/BLOCK4.md``).
 """
 
 from __future__ import annotations
@@ -42,13 +42,20 @@ class Settings:
 
     # ------------------------------------------------------------------ verdict thresholds
     ask_threshold: int = 40
-    """Score at or above this → ``ask`` (confirm Thursday)."""
+    """Score at or above this → ``ask`` (provisional)."""
 
     deny_threshold: int = 75
-    """Score at or above this → ``deny`` / auto-restore (confirm Thursday)."""
+    """Score at or above this → ``deny`` / auto-restore (provisional)."""
 
     max_reasons: int = 3
     """How many rule hits to list in a block/ask message."""
+
+    # ------------------------------------------------------------------ recovery
+    auto_restore: str = "agent"
+    """Which high-risk (deny) changes are put back automatically (see ``recovery.py``):
+    ``agent`` = only changes the agent made (shell commands, MCP tools); ``always`` = also
+    changes from outside the agent (editors, other programs); ``off`` = never, warn only.
+    Overridden by ``$MEMTEGRITY_AUTO_RESTORE``."""
 
     # ------------------------------------------------------------------ replay
     trials_per_condition: int = 5
