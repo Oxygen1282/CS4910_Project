@@ -58,16 +58,21 @@ def _project_dir(payload: HookInput) -> Path | None:
 
 
 def _display(path: Path, project_dir: Path | None) -> str:
-    """Short, readable path for messages."""
+    """Short, readable path for messages.
+
+    Always uses ``/``: messages suggest commands like ``/memtegrity:restore <path>``, and the
+    skills run those in a shell (Git Bash on Windows) that would drop a ``\\`` separator.
+    Python on Windows accepts ``/`` paths.
+    """
     if project_dir is not None:
         try:
-            return str(path.relative_to(paths.resolve_path(project_dir)))
+            return path.relative_to(paths.resolve_path(project_dir)).as_posix()
         except ValueError:
             pass
     try:  # resolved, so drive-letter and folder case match on Windows
-        return str(Path("~") / path.relative_to(paths.resolve_path(Path.home())))
+        return (Path("~") / path.relative_to(paths.resolve_path(Path.home()))).as_posix()
     except ValueError:
-        return str(path)
+        return path.as_posix()
 
 
 def _decision(verdict: Verdict, reason: str, system_message: str | None = None) -> HookOutput:

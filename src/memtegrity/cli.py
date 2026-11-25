@@ -133,6 +133,8 @@ def status(project: Path | None = _PROJECT) -> None:
 
 
 def _short(path: Path, project_dir: Path) -> str:
+    """Short path for output, always with ``/`` so it can be pasted into a shell command
+    (a ``\\`` separator is dropped by Git Bash on Windows)."""
     from memtegrity.paths import resolve_path
 
     for base, prefix in ((resolve_path(project_dir), ""), (resolve_path(Path.home()), "~")):
@@ -140,8 +142,8 @@ def _short(path: Path, project_dir: Path) -> str:
             rel = path.relative_to(base)
         except ValueError:
             continue
-        return str(Path(prefix) / rel) if prefix else str(rel)
-    return str(path)
+        return (Path(prefix) / rel).as_posix() if prefix else rel.as_posix()
+    return path.as_posix()
 
 
 @app.command()

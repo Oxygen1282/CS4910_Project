@@ -124,3 +124,16 @@ def test_skill_launcher_runs_the_cli(tmp_path: Path, project: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert "Audit log intact" in result.stdout
     assert (tmp_path / "data" / "venv").is_dir()  # same place the hooks keep theirs
+
+
+def test_paths_in_messages_use_forward_slashes(tmp_path: Path) -> None:
+    """Messages suggest commands like `/memtegrity:restore <path>`; the skills run them in a
+    shell (Git Bash on Windows) that drops a backslash separator, so paths must use `/`."""
+    from memtegrity.cli import _short
+    from memtegrity.hooks import _display
+
+    nested = paths.resolve_path(tmp_path) / ".claude" / "settings.json"
+    assert _display(nested, tmp_path) == ".claude/settings.json"
+    assert _short(nested, tmp_path) == ".claude/settings.json"
+    assert "\\" not in _display(nested, None)
+    assert "\\" not in _short(nested, tmp_path / "elsewhere")
