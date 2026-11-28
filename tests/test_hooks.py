@@ -5,11 +5,10 @@ import io
 import json
 import os
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
-from conftest import set_home, symlink_or_skip
+from conftest import run_bounded, set_home, symlink_or_skip
 
 from memtegrity.hooks import emit, handle_pre_tool_use, run_hook
 from memtegrity.models import HookEvent
@@ -206,14 +205,8 @@ def test_hooks_json_command_end_to_end(
         if k not in {"VIRTUAL_ENV", "UV_PROJECT_ENVIRONMENT", "CLAUDE_PLUGIN_DATA"}
     }
     env |= {"CLAUDE_PLUGIN_ROOT": str(ROOT), "CLAUDE_PLUGIN_DATA": str(plugin_data)}
-    result = subprocess.run(
-        ["sh", "-c", _hook_commands()["PreToolUse"]],
-        input=json.dumps(edit(proj, new)),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env=env,
-        timeout=300,
+    result = run_bounded(
+        ["sh", "-c", _hook_commands()["PreToolUse"]], input=json.dumps(edit(proj, new)), env=env
     )
     assert result.returncode == 0, result.stderr
     out = json.loads(result.stdout) if result.stdout.strip() else {}

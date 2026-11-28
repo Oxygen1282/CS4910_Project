@@ -39,6 +39,9 @@ Memtegrity protects the files AI coding agents load as **instructions**, **memor
 | `markers.py`, `watch.py` | Tiny files that let hook processes coordinate without the database: content awaiting approval, Memtegrity's own writes, tool calls in flight, queued warnings, per-session watch list | No |
 | `mcp.py` | What an MCP tool call will write, from its arguments (paths, content, edits, moves) | No: MCP is cross-agent |
 | `packages.py`, `_popular.py` | Look-alike (typosquatted) package names, offline | No |
+| `judge.py` | AI judge interface (`Judge` → `JudgeResult`), shared cache, per-session cost cap, on/off switch | No: any model can implement it |
+| `llm_risk.py` | The Claude implementation of `Judge`: key loading, prompt, structured-output call | Claude API (not Claude Code) |
+| `redact.py` | Remove secrets from text before it is sent anywhere | No |
 
 ## Per-agent pieces
 
@@ -81,6 +84,12 @@ Memtegrity protects the files AI coding agents load as **instructions**, **memor
 | Settings changes blocked, not just reported | Prevent, then detect: a malicious hook must never run | `hooks.handle_config_change` |
 | An edit adding an `@import` is judged with the imported file | Two harmless-looking steps can't add up to poison | `engine._import_target_hits` |
 | Text addressed to AI reviewers is a signal | Defense in depth for the AI judge: trying to talk the reviewer out of it is evidence | `rules.py` (`evasion.addresses_reviewer`) |
+| The AI judge can raise freely, lower one level at most, never past a hard rule | Don't let the component an attacker can talk to have the last word (bounded trust in a probabilistic check) | `scoring.blend_llm` |
+| Judge failure, timeout or refusal → rules only | Fail securely: an extra signal, never a dependency, never "allow" | `llm_risk.judge_with_claude`, `engine.assess_change` |
+| Only the diff, secrets redacted, home folder removed from paths | Data minimization: send a third party the least that does the job | `redact.py`, `llm_risk.build_user_content` |
+| The change sits in a tag named after its own hash | Keep data and instructions apart (the change can't close the tag) | `llm_risk.build_user_content` |
+| Judge's API address pinned; key read only from our own `.env`, never exported | A poisoned setting (`ANTHROPIC_BASE_URL`) or repository can't redirect or choose our key | `llm_risk.make_client`, `llm_risk.load_api_key` |
+| Judge answers cached, paid calls capped per session | Availability and cost: an attacker can't run up the user's bill by forcing many judgments | `judge.cache_*`, `judge.take_call` |
 | Restores can be fenced to a folder (`$MEMTEGRITY_RESTORE_ROOTS`) | Safe live testing on a real machine | `recovery.restore_allowed` |
 | Hash-chained audit log, serialized writers | Tamper evidence; integrity of the record | `store.record_change`, `store.verify_chain` |
 | Resolve paths before deciding | Canonicalize before authorizing (path traversal, symlinks, case, hard links; on Windows also `CLAUDE.md.`, `CLAUDE.md::$DATA`, `.claude::$INDEX_ALLOCATION`) | `paths.py` |
@@ -97,7 +106,8 @@ Memtegrity protects the files AI coding agents load as **instructions**, **memor
 
 The PreToolUse hook runs on **every** Write/Edit, so:
 - The hook path imports only `paths`, `surfaces`, `enums` and `agents` (no Pydantic or SQLAlchemy). Non-protected files take ≈0.1 s, most of it `uv` start-up.
-- The analysis stack loads only for protected files (≈0.5 s).
+- The analysis stack loads only for protected files (≈0.5 s). The `anthropic` SDK loads only when the judge actually makes a call (a cached answer doesn't load it).
+- The judge adds one API call (20 s timeout, effort `low`, no retries) to judged changes to protected files, never to other writes, and never at SessionStart.
 - Pydantic models build lazily (`defer_build`), database tables load lazily (`tables.py`), and `entry.py` skips the CLI framework for hooks.
 - PreToolUse touches the database only after an ask/deny; PostToolUse only if a small marker file says the content was asked about. Ordinary writes never load SQLModel.
 - Every Bash command now runs two quick hooks (PreToolUse notes it's running; PostToolUse `stat`s the watched files and folders). Measured: about 0.12 s each when nothing protected changed, with no database access. The database loads only when a protected file actually changed.

@@ -22,6 +22,12 @@ Agent-neutral core. Four ideas, each answering a failure mode found while testin
    something and the text is theirs, soft signals are scaled down (``USER_REQUESTED``).
    Hard signals (invisible text, encoded payloads, disabling safeguards) never are.
 
+5. **The AI judge is asymmetric** (``blend_llm``). It may *raise* a score freely: that is
+   what it's for (poison with no patterns). It may *lower* one by at most one verdict level
+   (deny → ask, ask → allow), and never when a hard rule fired. A judge talked into "this
+   is fine, score 0" by text inside the change can therefore turn a block into a prompt,
+   but never into silence, and never overrule hidden text or tampering.
+
 Thresholds and severities are **provisional**: the evaluation block calibrates them on the
 labeled dataset (detection rate vs. false positives). Change them in ``config.py`` /
 ``rules.py``, not here.
@@ -32,7 +38,10 @@ from __future__ import annotations
 from memtegrity.config import DEFAULT_SETTINGS, Settings
 from memtegrity.models import Assessment, LLMRisk, RiskCategory, RuleHit, Verdict
 from memtegrity.provenance import Origin, ProvenanceResult
-from memtegrity.rules import is_directive, is_hard
+from memtegrity.rules import is_directive, is_hard, snippet
+
+RATIONALE_CHARS = 300
+"""How much of the judge's explanation goes into messages (it may quote attacker text)."""
 
 WINDOW = 2
 """Text hits within this many lines of each other are treated as one instruction."""
@@ -94,17 +103,33 @@ def verdict_for(score: int, settings: Settings = DEFAULT_SETTINGS) -> Verdict:
     return Verdict.ALLOW
 
 
+def blend_llm(
+    rule_score: int, llm_score: int, hard: bool, settings: Settings = DEFAULT_SETTINGS
+) -> tuple[int, str]:
+    """Final score from the rules' score and the judge's, plus what the judge did:
+    ``raised``, ``agreed``, ``lowered`` or ``held`` (wanted lower, not allowed)."""
+    if llm_score > rule_score:
+        return llm_score, "raised"
+    if llm_score == rule_score:
+        return rule_score, "agreed"
+    if hard:
+        return rule_score, "held"
+    rule_verdict = verdict_for(rule_score, settings)
+    floor = settings.ask_threshold if rule_verdict is Verdict.DENY else 0
+    final = max(llm_score, floor)
+    return (final, "lowered") if final < rule_score else (rule_score, "held")
+
+
 def combine(
     rule_hits: list[RuleHit],
     llm: LLMRisk | None = None,
     provenance: ProvenanceResult | None = None,
     settings: Settings = DEFAULT_SETTINGS,
 ) -> Assessment:
-    """Merge rule hits, provenance and the LLM result into a final ``Assessment``.
+    """Merge rule hits, provenance and the AI judge's result into a final ``Assessment``.
 
-    If an LLM result is passed, the higher score wins for now.
-    TODO(Block 4): the agreed blend: raise freely; lower by at most one verdict level, never
-    when a hard rule fired (docs/BLOCK4.md).
+    The judge's score is blended per ``blend_llm`` (raise freely; lower one verdict level at
+    most, never past a hard rule).
     """
     prov_hits = provenance.hits if provenance else []
     score, cluster = worst_cluster(rule_hits, prov_hits)
@@ -118,8 +143,10 @@ def combine(
     ):
         score, softened = round(score * USER_REQUESTED), True
 
+    effect = None
     if llm is not None:
-        score = max(score, llm.score)
+        hard = any(is_hard(h.rule_id) for h in [*rule_hits, *cluster])
+        score, effect = blend_llm(score, llm.score, hard, settings)
 
     if cluster:
         category = cluster[0].category
@@ -133,10 +160,19 @@ def combine(
         if softened:
             parts.append("score reduced because you asked to save this")
         reason = "; ".join(parts)
-    elif llm is not None:
-        category, reason = llm.category, llm.rationale
     else:
         category, reason = RiskCategory.BENIGN, "no risk indicators found"
+
+    if llm is not None:
+        why = snippet(llm.rationale, RATIONALE_CHARS)
+        if effect == "raised":
+            category = llm.category
+            rules_part = f"; rules: {reason}" if cluster else ""
+            reason = f"AI judge ({llm.score}/100): {why}{rules_part}"
+        elif effect == "lowered":
+            reason = f"{reason}; AI judge rated it lower ({llm.score}/100): {why}"
+        elif not cluster:
+            reason = f"no risk indicators found; AI judge ({llm.score}/100): {why}"
 
     all_hits = rule_hits + [h for h in prov_hits if h in cluster]
     return Assessment(

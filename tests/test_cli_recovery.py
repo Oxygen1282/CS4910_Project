@@ -4,10 +4,10 @@ the data folder the CLI shares with the plugin."""
 import json
 import os
 import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import run_bounded
 from typer.testing import CliRunner
 
 from memtegrity import paths, store
@@ -111,15 +111,14 @@ def test_cli_finds_the_plugins_database(
 
 @pytest.mark.skipif(shutil.which("uv") is None or shutil.which("sh") is None, reason="needs uv, sh")
 def test_skill_launcher_runs_the_cli(tmp_path: Path, project: Path) -> None:
-    env = {k: v for k, v in os.environ.items() if k not in {"VIRTUAL_ENV", "CLAUDE_PLUGIN_DATA"}}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in {"VIRTUAL_ENV", "CLAUDE_PLUGIN_DATA", "CLAUDE_PLUGIN_ROOT"}
+    }
     env["MEMTEGRITY_DATA_DIR"] = str(tmp_path / "data")
-    result = subprocess.run(
-        ["sh", str(ROOT / "bin" / "memtegrity"), "status", "--project", str(project)],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env=env,
-        timeout=300,
+    result = run_bounded(
+        ["sh", str(ROOT / "bin" / "memtegrity"), "status", "--project", str(project)], env=env
     )
     assert result.returncode == 0, result.stderr
     assert "Audit log intact" in result.stdout

@@ -655,13 +655,13 @@ def is_hard(rule_id: str) -> bool:
 # --------------------------------------------------------------------------- entry point
 
 
-def snippet(text: str) -> str:
+def snippet(text: str, limit: int = _SNIPPET) -> str:
     """Make evidence safe to echo back: it is attacker-controlled text, so strip invisible
     characters and newlines and cap the length before it goes into a message the agent
     reads."""
     clean = _VS_RX.sub("", _INVISIBLE_RX.sub("", text)).replace("\n", " ").replace("\r", " ")
     clean = clean.strip()
-    return clean if len(clean) <= _SNIPPET else clean[: _SNIPPET - 1] + "…"
+    return clean if len(clean) <= limit else clean[: limit - 1] + "…"
 
 
 def run_rules(added: list[AddedLine], before: str = "", *, _depth: int = 0) -> list[RuleHit]:

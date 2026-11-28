@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -30,6 +32,10 @@ def _isolated_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     data = tmp_path / "plugin-data"
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(data))
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    # Never the real API: the judge is off unless a test turns it on with a fake client,
+    # and the plugin root (where a developer's .env with a real key lives) is empty.
+    monkeypatch.setenv("MEMTEGRITY_JUDGE", "off")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "plugin-root"))
     return data
 
 
@@ -49,6 +55,36 @@ def project(tmp_path: Path, home: Path) -> Path:
     (p / "CLAUDE.md").write_bytes(b"# Notes\n- Use pnpm.\n- Setup: see @docs/setup.md\n")
     (p / "docs" / "setup.md").write_bytes(b"Run pnpm install.\n")
     return p
+
+
+def run_bounded(
+    args: list[str], *, env: dict[str, str], input: str | None = None, timeout: float = 300
+) -> subprocess.CompletedProcess[str]:
+    """``subprocess.run`` for tests that start ``uv`` (which may build a venv and stall on
+    the network): on timeout, kill the whole process tree and fail the test.
+
+    ``subprocess.run(timeout=…)`` kills only the direct child. On Windows the grandchild
+    (``uv``) survives, keeps the output pipes open, and the test hangs forever instead of
+    failing."""
+    proc = subprocess.Popen(
+        args,
+        stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        env=env,
+    )
+    try:
+        stdout, stderr = proc.communicate(input, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+        proc.kill()
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.communicate(timeout=10)
+        pytest.fail(f"{args[0]} didn't finish within {timeout:.0f} s (uv stalled?)")
+    return subprocess.CompletedProcess(args, proc.returncode, stdout, stderr)
 
 
 def symlink_or_skip(link: Path, target: Path, *, target_is_directory: bool = False) -> None:

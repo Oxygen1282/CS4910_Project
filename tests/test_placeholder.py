@@ -16,8 +16,9 @@ def test_every_hook_event_has_a_handler() -> None:
 
 
 def test_remaining_stubs_are_not_implemented_yet() -> None:
-    # The AI judge is the next block's work (docs/BLOCK4.md).
-    from memtegrity import llm_risk
+    # Replay (Block 5) and the HTML report (Block 6) are the next blocks' work
+    # (docs/BLOCK4.md). Replace this when they land.
+    from memtegrity.replay import harness
 
     with pytest.raises(NotImplementedError):
-        llm_risk.score_with_llm("", "CLAUDE.md", [])
+        harness.build_system_prompt({})
