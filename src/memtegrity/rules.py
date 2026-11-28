@@ -162,6 +162,14 @@ def _regex(pattern: str, *, raw: bool = False, negatable: bool = False) -> Finde
     return find
 
 
+def _find_typosquats(view: View) -> Iterator[Match]:
+    from memtegrity.packages import suspicious_names
+
+    for i, line in enumerate(view.norm_lines):
+        for name, target in suspicious_names(line):
+            yield Match(i, f"{name} (looks like {target})")
+
+
 # --------------------------------------------------------------------------- hidden content
 
 
@@ -557,6 +565,55 @@ RULES: list[Rule] = [
         _find_import(external=True),
         directive=True,
     ),
+    # ---- supply chain
+    Rule(
+        "supply.typosquat",
+        "look-alike of a popular package (typosquatting)",
+        50,
+        C.SUPPLY_CHAIN,
+        lambda view: _find_typosquats(view),
+        directive=True,
+    ),
+    # ---- attacks on the judge
+    Rule(
+        "evasion.addresses_reviewer",
+        "text addressed to an AI reviewer or security scanner",
+        55,
+        C.TAMPERING,
+        _regex(
+            r"\b(?:note|message|instructions?|attention|hey)\s+(?:to|for)\s+(?:the\s+|any\s+|all\s+)?"
+            r"(?:ai\s+|llm\s+|automated\s+|security\s+)*(?:reviewers?|scanners?|auditors?|"
+            r"classifiers?|judges?|moderators?|guardrails?|filters?|monitors?|analy[sz]ers?)\b|"
+            r"\b(?:ai|llm|automated|security)\s+(?:reviewers?|scanners?|auditors?|classifiers?|"
+            r"judges?|tools?|systems?|checks?)\b[^.\n]{0,60}\b(?:should|must|can|may|will)\s+"
+            r"(?:treat|consider|ignore|skip|allow|approve|pass|rate|score|classify)\b|"
+            r"\b(?:this|the following|these)\s+(?:file|text|content|instructions?|lines?|change|"
+            r"section|note|rules?)\s+(?:is|are|has been|have been)\s+(?:safe|benign|harmless|"
+            r"verified|pre-?approved|approved|trusted|whitelisted|allowlisted|"
+            r"security[- ]reviewed)\b|"
+            r"\b(?:rate|score|classify|mark|label|treat)\s+(?:this|it|the following|these)\s+as\s+"
+            r"(?:safe|benign|harmless|low[- ]risk|0|zero|trusted|approved|legitimate)\b|"
+            r"\bdo not (?:flag|report|block|scan|analy[sz]e)\s+(?:this|it|these|the following)\b"
+        ),
+        directive=True,
+    ),
+    Rule(
+        "memory.import_target",
+        "new @import pulls in a file that looks risky",
+        0,  # computed per import by ``engine`` from the imported file's own score
+        C.INSTRUCTION_OVERRIDE,
+        lambda view: iter(()),
+        directive=True,
+        hard=True,  # the user asking for the import doesn't vouch for the file's content
+    ),
+    Rule(
+        "safeguard.removed",
+        "removes a safeguard the file contained",
+        45,
+        C.SECURITY_WEAKENING,
+        lambda view: iter(()),  # looks at removed lines: see ``run_removal_rules``
+        directive=True,
+    ),
     # ---- attacks on the guard itself
     Rule(
         "tamper.disable_guard",
@@ -652,3 +709,67 @@ def run_rules(added: list[AddedLine], before: str = "", *, _depth: int = 0) -> l
                 )
 
     return list(hits.values())
+
+
+# --------------------------------------------------------------------------- removed lines
+# Added text is where poison usually is, but deleting a safeguard ("never send code to
+# external hosts", "ask before deploying") is an attack too: it removes a guardrail the
+# user put there. These look at what an edit *removes*.
+
+_SAFEGUARD_RXS = [
+    re.compile(
+        r"\b(?:never|do not|don'?t|must not|mustn'?t|should not|shouldn'?t|avoid|no)\b[^.\n]{0,60}"
+        r"\b(?:send|upload|share|post|push|commit|deploy|publish|delete|remov\w*|rm|drop|force|"
+        r"expose|leak|log|print|paste|exfiltrat\w*|install|run|execut\w*|curl|wget|email|"
+        r"disable|skip|bypass|external|third[- ]party|secrets?|credentials?|tokens?|keys?|"
+        r"passwords?|\.env|production|prod|main|master)\b"
+    ),
+    re.compile(
+        r"\b(?:ask|check with|confirm with|get (?:approval|permission) from)\b[^.\n]{0,30}"
+        r"\b(?:user|me|human|owner|first|before)\b"
+    ),
+    re.compile(
+        r"\brequire[sd]? (?:explicit |manual )?(?:approval|confirmation|review|permission)\b"
+    ),
+    re.compile(r"\bwithout (?:explicit |prior )?(?:approval|permission|confirmation|asking)\b"),
+    re.compile(
+        r"\b(?:always )?(?:verify|validate|check) (?:tls|ssl|certificates?|signatures?|checksums?|"
+        r"hashes|host keys?)\b|\bkeep\b[^.\n]{0,30}\b(?:secret|private|confidential)\b|"
+        r"\bread-?only\b|\bsandbox(?:ed)?\b|\bleast privilege\b"
+    ),
+]
+_SIMILAR = 0.75
+"""A removed line counts as still present if the new text has a line this similar (an
+edit that rewords or extends a safeguard keeps it)."""
+
+
+def run_removal_rules(removed: list[tuple[int | None, str]], after: str) -> list[RuleHit]:
+    """One ``safeguard.removed`` hit per safeguard line that is gone from ``after``."""
+    import difflib
+
+    if not removed:
+        return []
+    remaining = [normalize(line) for line in after.splitlines() if line.strip()]
+    hits = []
+    for line_no, line in removed:
+        norm = normalize(line).strip()
+        if len(norm) < 8 or not any(rx.search(norm) for rx in _SAFEGUARD_RXS):
+            continue
+        if any(
+            norm in r
+            or difflib.SequenceMatcher(None, norm, r).quick_ratio() >= _SIMILAR
+            and difflib.SequenceMatcher(None, norm, r).ratio() >= _SIMILAR
+            for r in remaining
+        ):
+            continue
+        hits.append(
+            RuleHit(
+                rule_id="safeguard.removed",
+                description="removes a safeguard the file contained",
+                severity=RULES_BY_ID["safeguard.removed"].severity,
+                category=RiskCategory.SECURITY_WEAKENING,
+                matched_text=snippet(f"removed: {line.strip()}"),
+                line=line_no,
+            )
+        )
+    return hits

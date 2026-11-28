@@ -72,6 +72,12 @@ class AgentProfile:
     import_closure: Callable[[list[Path]], dict[Path, Surface]] | None = None
     """Every existing file the given protected files import, directly or transitively, with
     the surface to treat it as."""
+    new_import_targets: Callable[[Path, str, str], list[Path]] | None = None
+    """Existing files that an edit of an instruction file (path, before, after) newly
+    imports. The edit is judged together with what it would pull in."""
+    expected_paths: Callable[[Path], tuple[list[Path], list[Path]]] | None = None
+    """``(files, folders)`` that may not exist yet but would load into sessions if created
+    (CLAUDE.md, rules folders, auto memory). Watched so a new protected file is noticed."""
 
 
 @lru_cache(maxsize=256)

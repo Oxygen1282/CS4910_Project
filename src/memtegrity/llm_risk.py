@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from anthropic import Anthropic
 
 SYSTEM_PROMPT = ""
-"""System prompt for the scoring call. TODO(B): write it (explain memory poisoning,
+"""System prompt for the scoring call. TODO(Block 4): write it (explain memory poisoning,
 treat the diff as untrusted data, describe the 0–100 scale and categories)."""
 
 
@@ -33,6 +33,6 @@ def score_with_llm(
     Returns ``None`` if the call fails, times out, or is refused (the caller then
     falls back to rules only).
 
-    TODO(B): implement.
+    TODO(Block 4): implement.
     """
     raise NotImplementedError

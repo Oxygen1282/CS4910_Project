@@ -70,6 +70,19 @@ def resolve_path(path: str | os.PathLike[str], base: Path | None = None) -> Path
     return Path(os.path.realpath(p))
 
 
+def _lexical(path: str | os.PathLike[str], base: Path | None = None) -> Path:
+    """The absolute path *as named*, without following symlinks. A ``CLAUDE.md`` that is a
+    symlink to ``docs/team.md`` is still ``CLAUDE.md`` to the agent that loads it, so both
+    names are checked (only ever adding protection: the resolved path is checked too)."""
+    raw = os.fspath(path)
+    if os.name == "nt":
+        raw = win32_alias_free(raw)
+    p = Path(os.path.expanduser(raw))
+    if not p.is_absolute():
+        p = (base or Path.cwd()) / p
+    return Path(os.path.normpath(p))
+
+
 def key(p: Path) -> tuple[str, ...]:
     """Path parts normalized for comparison: Unicode NFC (macOS stores NFD) and case-folded
     (APFS is case-insensitive by default, so ``claude.md`` *is* ``CLAUDE.md``)."""
@@ -120,7 +133,7 @@ def classify(
     parts = key(real)
     if not parts:
         return None
-    surface = _match(parts, project_dir)
+    surface = _match(parts, project_dir) or _match(key(_lexical(path, project_dir)), project_dir)
     if surface is not None:
         return surface
     for profile in PROFILES:
@@ -267,7 +280,13 @@ def discover(
         real = resolve_path(path)
         if real in found.files or not real.is_file():
             return
-        surface = _match(key(real), project, root_keys) or surface
+        # Match the real file, or the name it was found under: a CLAUDE.md that is a
+        # symlink to docs/team.md loads every session, so its target is protected too.
+        surface = (
+            _match(key(real), project, root_keys)
+            or _match(key(_lexical(path)), project, root_keys)
+            or surface
+        )
         if surface is not None:
             found.files[real] = surface
 
@@ -311,15 +330,46 @@ def list_memory_files(project_dir: Path) -> list[Path]:
     return sorted(discover(project_dir).files)
 
 
-def data_dir() -> Path:
-    """Return the persistent data directory, creating it if needed.
+DATA_DIR_ENV = "MEMTEGRITY_DATA_DIR"
+"""Explicit data folder for the CLI (the skills pass the plugin's own folder this way)."""
 
-    ``$CLAUDE_PLUGIN_DATA`` inside Claude Code; otherwise ``~/.cache/memtegrity``, the same
-    folder ``hooks/hooks.json`` falls back to, so the CLI and the hooks share one database.
+
+def data_dir() -> Path:
+    """Return the persistent data directory, creating it if needed. In order:
+
+    1. ``$MEMTEGRITY_DATA_DIR``: set explicitly (``--data-dir``; the skills set it);
+    2. ``$CLAUDE_PLUGIN_DATA``: set by Claude Code for the plugin's hooks;
+    3. the plugin's folder under ``~/.claude/plugins/data/`` if one has a database, so the
+       ``memtegrity`` command in a terminal sees the same history as the plugin (the most
+       recently used one if there are several: an install and a ``--plugin-dir`` test);
+    4. ``~/.cache/memtegrity``, the same folder ``hooks/hooks.json`` falls back to.
     """
     from memtegrity.config import DEFAULT_SETTINGS
 
-    env = os.environ.get(DEFAULT_SETTINGS.data_dir_env)
-    d = Path(os.path.expanduser(env)) if env else Path.home() / ".cache" / "memtegrity"
+    env = os.environ.get(DATA_DIR_ENV) or os.environ.get(DEFAULT_SETTINGS.data_dir_env)
+    d = Path(os.path.expanduser(env)) if env else _plugin_data_dir() or _fallback_data_dir()
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _fallback_data_dir() -> Path:
+    return Path.home() / ".cache" / "memtegrity"
+
+
+def _plugin_data_dir() -> Path | None:
+    from memtegrity.config import DEFAULT_SETTINGS
+
+    cfg = os.environ.get("CLAUDE_CONFIG_DIR")
+    base = (Path(os.path.expanduser(cfg)) if cfg else Path.home() / ".claude") / "plugins" / "data"
+    try:
+        dbs = [
+            d / DEFAULT_SETTINGS.db_filename
+            for d in base.iterdir()
+            if d.name.casefold().startswith("memtegrity")
+        ]
+    except OSError:
+        return None
+    dbs = [db for db in dbs if db.is_file()]
+    if not dbs:
+        return None
+    return max(dbs, key=lambda db: db.stat().st_mtime).parent

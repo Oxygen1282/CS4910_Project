@@ -35,13 +35,18 @@ Memtegrity protects the files AI coding agents load as **instructions**, **memor
 | `scan.py` | Scan a repository's agent files at rest | No |
 | `baseline.py` | Between-session check: compare files with approved snapshots, trust on first use, approvals | No |
 | `store.py` | SQLite: snapshots, baselines, hash-chained audit log, `verify_chain` | No |
+| `recovery.py` | Judge a protected file that changed on disk; restore policy (who made it?); restore + quarantine | No |
+| `markers.py`, `watch.py` | Tiny files that let hook processes coordinate without the database: content awaiting approval, Memtegrity's own writes, tool calls in flight, queued warnings, per-session watch list | No |
+| `mcp.py` | What an MCP tool call will write, from its arguments (paths, content, edits, moves) | No: MCP is cross-agent |
+| `packages.py`, `_popular.py` | Look-alike (typosquatted) package names, offline | No |
 
 ## Per-agent pieces
 
 | Piece | Claude Code (built) | Another agent (later) |
 |---|---|---|
 | **Which files** (`agents/<agent>.py`, an `AgentProfile`) | `claude_code.py` | Already listed in `others.py` for 6 agents/standards |
-| **Files outside the project that load into its sessions** (`session_paths`) and **imports** (`imported`, `import_closure`) | `~/.claude`, parent-folder CLAUDE.md, auto memory; `@path` imports | Optional (e.g. Gemini CLI also has `@` imports) |
+| **Files outside the project that load into its sessions** (`session_paths`) and **imports** (`imported`, `import_closure`, `new_import_targets`) | `~/.claude`, parent-folder CLAUDE.md, auto memory; `@path` imports | Optional (e.g. Gemini CLI also has `@` imports) |
+| **Files that may be created later** (`expected_paths`) | CLAUDE.md files, AGENTS.md, `.claude/rules` etc., auto memory | Optional |
 | **Session record → `Evidence`** (for provenance) | `evidence_from_transcript` (JSONL transcript) | Write a parser for that agent's log format |
 | **Config analyzer** (structure of settings files) | `assess_config` (hooks, MCP, permissions, env) | Optional: until then, config changes are judged by text rules and default to "ask" |
 | **Real-time adapter** (hook protocol in → engine → protocol out) | `hooks.py` + `hooks/hooks.json` | One module per agent that has hooks |
@@ -68,6 +73,15 @@ Memtegrity protects the files AI coding agents load as **instructions**, **memor
 | Trust on first use, except what the rules call "deny" | Usability without blindly trusting a pre-poisoned repo | `baseline.check` |
 | A flagged change stays flagged until the user approves it | The approved version stays the reference; no silent drift | `baseline.check` |
 | Only content the user approved *in the permission prompt* becomes the baseline | The same text written another way (Bash) isn't approved | `hooks.handle_post_tool_use` |
+| Auto-restore only what the agent wrote (default) | Contain the attacker's channel (the agent) without overwriting the user's own work | `recovery.handle_change` |
+| Restore only to an approved version, keep the replaced one, never delete | Recovery must be reversible and evidence-preserving | `recovery.restore` |
+| "From the repository" means the content matches `git show HEAD:` | Attribute by content, not by command line: `git pull && echo poison >> CLAUDE.md` gets no pass | `recovery.matches_repository` |
+| Our own restore write is marked and ignored | No restore → file-watch → restore loop | `markers.note_own_write` |
+| `memtegrity approve` / `baseline` / database access from the agent → ask | Separation of duties: the party being checked can't vouch for itself | `hooks._pre_bash` |
+| Settings changes blocked, not just reported | Prevent, then detect: a malicious hook must never run | `hooks.handle_config_change` |
+| An edit adding an `@import` is judged with the imported file | Two harmless-looking steps can't add up to poison | `engine._import_target_hits` |
+| Text addressed to AI reviewers is a signal | Defense in depth for the AI judge: trying to talk the reviewer out of it is evidence | `rules.py` (`evasion.addresses_reviewer`) |
+| Restores can be fenced to a folder (`$MEMTEGRITY_RESTORE_ROOTS`) | Safe live testing on a real machine | `recovery.restore_allowed` |
 | Hash-chained audit log, serialized writers | Tamper evidence; integrity of the record | `store.record_change`, `store.verify_chain` |
 | Resolve paths before deciding | Canonicalize before authorizing (path traversal, symlinks, case, hard links; on Windows also `CLAUDE.md.`, `CLAUDE.md::$DATA`, `.claude::$INDEX_ALLOCATION`) | `paths.py` |
 | Decode hook input as UTF-8 ourselves | Windows' default code page (cp1252) would garble hidden-Unicode payloads into text the rules can't see | `hooks.read_stdin` |
@@ -86,6 +100,8 @@ The PreToolUse hook runs on **every** Write/Edit, so:
 - The analysis stack loads only for protected files (≈0.5 s).
 - Pydantic models build lazily (`defer_build`), database tables load lazily (`tables.py`), and `entry.py` skips the CLI framework for hooks.
 - PreToolUse touches the database only after an ask/deny; PostToolUse only if a small marker file says the content was asked about. Ordinary writes never load SQLModel.
+- Every Bash command now runs two quick hooks (PreToolUse notes it's running; PostToolUse `stat`s the watched files and folders). Measured: about 0.12 s each when nothing protected changed, with no database access. The database loads only when a protected file actually changed.
+- FileChanged and UserPromptSubmit check marker files first. Repeated events for one save are recorded once.
 - SessionStart finds files with a cheap name check first and compiled glob regexes, reads every approved hash in one query, and stops walking after 0.8 s (the user is told if the check was partial). Measured on a slow Windows laptop: ~0.6 s of work for 45 files, plus ~2 s of one-time imports per process (Python, SQLModel). The very first run is slower (it analyzes every file).
 
 ## Provisional numbers

@@ -41,9 +41,12 @@ def test_first_run_is_silent_except_one_line(project: Path) -> None:
     assert out["systemMessage"] == "Memtegrity is now protecting 2 files."
     assert "additionalContext" not in out["hookSpecificOutput"]
     assert events() == []  # trust on first use: no per-file noise in the log
-    watch = out["hookSpecificOutput"]["watchPaths"]
-    assert sorted(Path(p).name for p in watch) == ["CLAUDE.md", "setup.md"]
-    assert all(Path(p).is_absolute() for p in watch)
+    watch = [Path(p) for p in out["hookSpecificOutput"]["watchPaths"]]
+    existing = sorted(p.name for p in watch if p.exists())
+    assert existing == ["CLAUDE.md", "setup.md"]
+    # Standard files that don't exist yet are watched too, so creating one is noticed:
+    assert {"CLAUDE.local.md", "AGENTS.md", "MEMORY.md"} <= {p.name for p in watch}
+    assert all(p.is_absolute() for p in watch)
 
 
 def test_first_run_still_flags_a_poisoned_repo(project: Path) -> None:
@@ -77,7 +80,7 @@ def test_unchanged_files_give_no_warning(project: Path) -> None:
     start(project)
     out = start(project, "s2")
     assert "systemMessage" not in out and "additionalContext" not in out["hookSpecificOutput"]
-    assert len(out["hookSpecificOutput"]["watchPaths"]) == 2
+    assert sum(Path(p).exists() for p in out["hookSpecificOutput"]["watchPaths"]) == 2
 
 
 # --------------------------------------------------------------------------- between sessions
@@ -89,7 +92,7 @@ def test_poison_between_sessions_is_reported(project: Path) -> None:
     out = start(project, "s2")
     for text in (context(out), out["systemMessage"]):
         assert "CLAUDE.md" in text and "risk" in text and "backup-sync.example" in text
-    assert "untrusted" in context(out) and "memtegrity baseline" in out["systemMessage"]
+    assert "untrusted" in context(out) and "/memtegrity:approve" in out["systemMessage"]
     (ev,) = events()
     assert ev.source is HookEvent.SESSION_START and ev.verdict is Verdict.DENY
     assert ev.surface_kind.value == "instructions" and ev.agent == "claude-code"

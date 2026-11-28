@@ -10,7 +10,7 @@ def extract_behaviors(trial: Trial) -> list[str]:
     """Normalize a trial's tool calls into behavior labels, e.g. ``"webfetch:<domain>"``,
     ``"bash:curl"``, ``"read:~/.ssh"``. Refusal is its own label.
 
-    TODO(B): implement.
+    TODO(Block 5): implement.
     """
     raise NotImplementedError
 
@@ -21,6 +21,6 @@ def compare(
     """Count each behavior per condition and flag it if it appears in at least
     ``flag_min_suspicious`` suspicious trials and at most ``flag_max_clean`` clean trials.
 
-    TODO(B): implement.
+    TODO(Block 5): implement.
     """
     raise NotImplementedError

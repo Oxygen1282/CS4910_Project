@@ -7,7 +7,7 @@ Background: [README](../README.md) for the overview, [CONTEXT.md](CONTEXT.md) fo
 - [ ] Install uv, clone, check out `feat/memtegrity-skeleton`, run `uv sync && uv run pytest`
 - [ ] Skim `src/memtegrity/models.py`, the shared contract we both build against
 
-## Open decisions
+## Open decisions at the Nov 5 meeting (historical; resolved below)
 - [ ] **1. Who is Partner A and who is Partner B?** (A = plugin & integrity, B = AI analysis & evidence)
 - [ ] **2. API key:** who creates the Anthropic Console account, adds ~$20 prepaid credit, and sets the spend limit? How do we share the key (one shared key, or one key each under the same org)? Remember: the API is billed separately from Claude Pro/Max.
 - [ ] **3. Protect `main`** and require one PR review before merging. The repo owner (Oxygen1282) sets this up in GitHub settings.
@@ -30,7 +30,7 @@ Smaller things to agree on:
 - **Scope:** real-time protection is Claude Code only for this project, but everything is built so other agents can be added without a rewrite (agent-neutral core, per-agent registry). See `docs/ARCHITECTURE.md`. Other agents' instruction files are already protected when Claude writes them, and covered by `memtegrity scan`.
 - **Scoring:** the current weights and thresholds are provisional (hand-set from the threat research). A later block calibrates them on the labeled dataset.
 - **Provenance** (did new memory text come from the user or from content Claude read?) is part of Block 1.
-- **Workflow:** we work in blocks, one person at a time. Each block ends with a PR and a `docs/BLOCK<n+1>.md` guide for the next person. Current: [BLOCK3.md](BLOCK3.md).
+- **Workflow:** we work in blocks, one person at a time. Each block ends with a PR and a `docs/BLOCK<n+1>.md` guide for the next person. Current: [BLOCK4.md](BLOCK4.md).
 
 ## Decisions made (Nov 14, Block 2)
 - Model changes are fine if listed in the PR.
@@ -38,6 +38,17 @@ Smaller things to agree on:
 - SessionStart may take about 1 second of work.
 - First-run timeout fixed: PreToolUse timeout raised to 300 s; SessionStart (600 s) runs first and builds the environment.
 - `@import` targets are protected, with `/` and `\` paths.
+
+## Decisions made (Nov 17–23, Block 3)
+- Blocks 3 and 4 were combined into Block 3, minus the AI judge. Block 3 built catch-and-undo plus every detection that needs no AI. The AI judge is Block 4.
+- **Restore policy** (`auto_restore`, default `agent`): only high-risk changes the agent made (shell, MCP) are restored automatically. Changes from outside the agent (editors, `git pull`) are flagged, and the agent is told to distrust them. `always` and `off` are available.
+- **"Ask"-level changes** detected during a session: warn only.
+- **Shared database:** the CLI finds the plugin's data folder; the skills pass it explicitly.
+- **ConfigChange blocking** moved from Block 6 into Block 3.
+- **Judge model:** `claude-sonnet-5-5` (already `scoring_model` in `config.py`).
+- **The judge may raise a score freely,** but lower it by at most one verdict level (deny → ask, ask → allow), and never when a *hard* rule fired (hidden text, encoded payloads, tampering, import of a risky file).
+- **Privacy for the judge:** send the diff and a little context, never whole files, with secrets redacted first.
+- **Live testing** on a real machine: `--plugin-dir` in a throwaway folder, with `MEMTEGRITY_RESTORE_ROOTS` set to that folder.
 
 ## Risks
 1. **PreToolUse latency.** Claude waits while we score. Keep the LLM call short with a timeout (`llm_timeout_seconds`), fall back to rules only, and measure it.

@@ -53,7 +53,7 @@ Suggested order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8. Each one can be it
 - **Works on macOS, Linux and Windows** (CI runs all three). In code: open text files with `encoding="utf-8"` (Windows defaults to cp1252); build paths with `pathlib`, never by joining `"/"` strings; get the home folder from `Path.home()` (Windows ignores `$HOME`); expect CRLF files (`splitlines()`, not `split("\n")`). `data_dir()`'s fallback must be `Path.home() / ".cache" / "memtegrity"`, the same folder `hooks.json`'s `$HOME/.cache/memtegrity` gives under Git Bash. In tests: fake the home folder with `conftest.set_home` (not `monkeypatch.setenv("HOME", …)`), create symlinks with `conftest.symlink_or_skip`, and write exact bytes (`write_bytes`) when a test compares hashes.
 - **No hidden Unicode in source:** CI checks it. Write `"\u200b"` style escapes, then run `uv run python scripts/escape_invisible.py <files>`.
 
-## 4. Check with Jackson before deciding
+## 4. Decisions (resolved; recorded in PLANNING.md)
 
 - Any change to `models.py` / `tables.py` beyond the hash-chain fields (it's the shared contract).
 - Trust-on-first-use: should the first baseline be silent, or show the user a one-time list?

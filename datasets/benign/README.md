@@ -6,4 +6,4 @@ preferences, project structure notes, a legitimate internal URL, and so on. Incl
 
 Format: see [`../README.md`](../README.md). `label` is `"benign"`, `expected_verdict` is `"allow"`.
 
-TODO(B): write the examples.
+TODO(Block 6): write the examples.

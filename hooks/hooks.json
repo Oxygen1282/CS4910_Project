@@ -11,9 +11,40 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA:-$HOME/.cache/memtegrity}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook user-prompt-submit",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA:-$HOME/.cache/memtegrity}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook pre-tool-use",
+            "timeout": 300
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA:-$HOME/.cache/memtegrity}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook pre-tool-use",
+            "timeout": 60
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
         "hooks": [
           {
             "type": "command",
@@ -26,6 +57,48 @@
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA:-$HOME/.cache/memtegrity}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook post-tool-use",
+            "timeout": 60
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA:-$HOME/.cache/memtegrity}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook post-tool-use",
+            "timeout": 60
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA:-$HOME/.cache/memtegrity}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook post-tool-use",
+            "timeout": 60
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "UV_PROJECT_ENVIRONMENT=\"${CLAUDE_PLUGIN_DATA:-$HOME/.cache/memtegrity}/venv\" uv run --quiet --project \"${CLAUDE_PLUGIN_ROOT}\" memtegrity hook post-tool-use",
+            "timeout": 60
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*",
         "hooks": [
           {
             "type": "command",

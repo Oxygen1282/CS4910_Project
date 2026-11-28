@@ -1,5 +1,7 @@
 # Block 3 guide: catch writes made any other way, then restore and quarantine
 
+> **Done.** Merged with the planned Block 4 rule work (removed safeguards, look-alike packages). What was built, and what's left: [BLOCK4.md](BLOCK4.md).
+
 **For:** whoever builds Block 3 (and their coding agent). Read this file first.
 **Prerequisite:** Block 2 (`block2`) is merged into `main`.
 **Needs no API key.** Everything here is local. The Claude API is first needed in Block 4.
@@ -45,11 +47,11 @@ Suggested order: 1 → 2 → 3 → 4 → 5 → 6 → 7.
 - **Cross-platform:** `encoding="utf-8"` everywhere, `pathlib`, `conftest.set_home` / `symlink_or_skip` in tests, `write_bytes` when comparing hashes.
 - **Don't change scoring numbers** (Block 6 calibrates them). **No API calls.** **No hidden Unicode** in source.
 
-## 4. Decisions to check with the other partner first
+## 4. Decisions (resolved)
 
-- Auto-restore on `deny` without asking: Block 2's design doc says yes. Confirm the user is told *what* was restored and how to get it back (`memtegrity review`).
-- What to do with `ask`-level changes from FileChanged (warn only, as SessionStart does today?).
-- The CLI and the plugin share a database only if they use the same data folder (`$CLAUDE_PLUGIN_DATA` vs. `~/.cache/memtegrity`; see README *Try it*). Fix now (e.g. the skills run the CLI inside Claude Code) or leave for the skills block?
+- Auto-restore on `deny`: only for changes the agent made (policy `auto_restore=agent`). Outside changes are flagged, the user is told how to restore or approve, and the agent is told to distrust them.
+- `ask`-level changes from FileChanged: warn only.
+- Shared database: fixed. The CLI finds the plugin's data folder, and the skills pass it explicitly.
 
 ## 5. Known Block 2 limits you may run into
 

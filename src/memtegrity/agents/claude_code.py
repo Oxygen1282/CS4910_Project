@@ -302,6 +302,36 @@ def import_closure(files: list[Path]) -> dict[Path, Surface]:
     return dict.fromkeys(_walk_imports(list(files)), IMPORTED)
 
 
+def new_import_targets(path: Path, before: str, after: str) -> list[Path]:
+    """Existing files that ``after`` imports and ``before`` didn't (one hop)."""
+    old = set(parse_imports(before))
+    out: list[Path] = []
+    for tok in parse_imports(after):
+        if tok in old:
+            continue
+        for target in _resolve_import(tok, path.parent):
+            if target.is_file() and target not in out:
+                out.append(target)
+    return out
+
+
+_PROJECT_FOLDERS = ("rules", "agents", "commands", "skills", "output-styles", "agent-memory")
+
+
+def expected_paths(project_dir: Path) -> tuple[list[Path], list[Path]]:
+    """Where a *new* protected file would load into this project's sessions: ``(files,
+    folders)``. Files: the project's CLAUDE.md files, AGENTS.md and the auto memory index.
+    Folders: the project's ``.claude`` instruction folders and auto memory."""
+    from memtegrity.paths import resolve_path
+
+    project = resolve_path(project_dir)
+    memory = auto_memory_dirs(project) + _custom_memory_dirs(project)
+    files = [project / name for name in (*_ANCESTOR_FILES, "AGENTS.md")]
+    files += [d / "MEMORY.md" for d in memory]
+    folders = [project / ".claude" / name for name in _PROJECT_FOLDERS] + memory
+    return files, folders
+
+
 PROFILE = AgentProfile(
     agent=AGENT,
     surfaces=SURFACES,
@@ -309,6 +339,8 @@ PROFILE = AgentProfile(
     session_paths=session_paths,
     imported=imported,
     import_closure=import_closure,
+    new_import_targets=new_import_targets,
+    expected_paths=expected_paths,
     pinned=(
         "CLAUDE.md",
         ".claude/CLAUDE.md",

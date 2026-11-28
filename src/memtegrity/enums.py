@@ -40,6 +40,7 @@ class HookEvent(StrEnum):
     SESSION_START = "session-start"
     PRE_TOOL_USE = "pre-tool-use"
     POST_TOOL_USE = "post-tool-use"
+    USER_PROMPT_SUBMIT = "user-prompt-submit"
     FILE_CHANGED = "file-changed"
     CONFIG_CHANGE = "config-change"
 
@@ -73,6 +74,8 @@ class RiskCategory(StrEnum):
     """Turns off a protection: TLS verification, host-key checks, ``--no-verify``, etc."""
     DESTRUCTIVE = "destructive"
     """Destroys work or data: force-push, ``rm -rf``, ``git reset --hard``, ``DROP TABLE``."""
+    SUPPLY_CHAIN = "supply_chain"
+    """Points the agent at a look-alike (typosquatted) package or an untrusted source of code."""
     UNTRUSTED_SOURCE = "untrusted_source"
     """Instructions that came from content the agent read (a page, file, tool output),
     not from the user. This is the signature of indirect prompt injection."""
