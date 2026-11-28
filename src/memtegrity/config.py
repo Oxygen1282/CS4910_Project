@@ -40,6 +40,20 @@ class Settings:
     llm_timeout_seconds: float = 20.0
     """Max time to wait for the scoring call. PreToolUse blocks Claude while it waits."""
 
+    judge_effort: str = "low"
+    """``output_config.effort`` for the judge call. A short classification: low effort keeps
+    the PreToolUse wait short (Sonnet 5.5 defaults to ``high``)."""
+
+    judge_max_tokens: int = 4_000
+    """Output cap for the judge call (thinking + the small JSON verdict)."""
+
+    judge_max_diff_chars: int = 12_000
+    """Longest diff sent to the judge; longer ones are cut, and the judge is told so."""
+
+    judge_max_calls_per_session: int = 40
+    """Cost cap: paid judge calls per session (cached answers don't count). After that,
+    rules only."""
+
     # ------------------------------------------------------------------ verdict thresholds
     ask_threshold: int = 40
     """Score at or above this → ``ask`` (provisional)."""

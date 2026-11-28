@@ -11,12 +11,16 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from memtegrity import integrity, provenance, rules, scoring
-from memtegrity.enums import SurfaceKind
+from memtegrity.enums import SurfaceKind, Verdict
 from memtegrity.models import Assessment, RiskCategory, RuleHit
 from memtegrity.provenance import Evidence
 from memtegrity.surfaces import Surface
+
+if TYPE_CHECKING:
+    from memtegrity.judge import Judge
 
 ConfigAnalyzer = Callable[[str, str], list[RuleHit]]
 
@@ -38,8 +42,14 @@ def assess_change(
     inserted: str | None = None,
     evidence: Evidence | None = None,
     path: Path | None = None,
+    judge: Judge | None = None,
 ) -> Assessment:
     """Judge a change to a protected file.
+
+    ``judge`` (optional, any ``memtegrity.judge.Judge``) is asked about the diff after the
+    rules ran; its score is blended in by ``scoring.combine``. Without one, or when it has
+    no opinion, the result is the rules' alone. It isn't asked when the rules' answer is
+    final anyway (a deny with a hard hit).
 
     ``after`` is the full new content. If it can't be predicted exactly (an edit we couldn't
     reproduce), pass ``after=None`` and the ``inserted`` text instead: it is judged on its
@@ -80,8 +90,36 @@ def assess_change(
 
     prov = provenance.assess(added_text, evidence, before)
     assessment = scoring.combine(hits, provenance=prov)
+    if judge is not None and not _final(assessment):
+        diff = (
+            integrity.diff_text(before, after, surface.name)
+            if after is not None
+            else "".join(f"+{line}\n" for line in (inserted or "").splitlines())
+        )
+        if diff.strip():
+            result = _ask_judge(judge, diff, path, surface, hits)
+            if result is not None and (result.risk is not None or result.refused):
+                assessment = scoring.combine(hits, llm=result.risk, provenance=prov)
+                assessment.llm_refused = result.refused
     assessment.latency_ms = round((time.perf_counter() - started) * 1000)
     return assessment
+
+
+def _final(assessment: Assessment) -> bool:
+    """A deny backed by a hard rule: no judge answer could change it."""
+    return assessment.verdict is Verdict.DENY and any(
+        rules.is_hard(h.rule_id) for h in assessment.rule_hits
+    )
+
+
+def _ask_judge(judge: Judge, diff: str, path: Path | None, surface: Surface, hits: list[RuleHit]):
+    try:
+        return judge(diff=diff, path=str(path or surface.name), surface=surface, rule_hits=hits)
+    except Exception as exc:  # noqa: BLE001 - a broken judge means "no opinion", never a crash
+        import sys
+
+        print(f"memtegrity: judge failed: {exc!r}", file=sys.stderr)
+        return None
 
 
 _IMPORT_TARGET_MAX_BYTES = 1_000_000

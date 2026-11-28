@@ -30,6 +30,10 @@ def _isolated_data_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     data = tmp_path / "plugin-data"
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(data))
     monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    # Never the real API: the judge is off unless a test turns it on with a fake client,
+    # and the plugin root (where a developer's .env with a real key lives) is empty.
+    monkeypatch.setenv("MEMTEGRITY_JUDGE", "off")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(tmp_path / "plugin-root"))
     return data
 
 

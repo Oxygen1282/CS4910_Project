@@ -1,6 +1,7 @@
 """The people-facing commands behind the /memtegrity skills: review, restore, approve, and
 the data folder the CLI shares with the plugin."""
 
+import contextlib
 import json
 import os
 import shutil
@@ -109,20 +110,40 @@ def test_cli_finds_the_plugins_database(
     assert paths.data_dir() == tmp_path / "explicit"
 
 
+def _kill_tree(proc: subprocess.Popen) -> None:
+    """Kill the launcher and everything it started. Killing only ``sh`` (what
+    ``subprocess.run(timeout=…)`` does) leaves ``uv`` running on Windows, holding the output
+    pipes open, so the test would hang forever instead of failing."""
+    if os.name == "nt":
+        subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
+    proc.kill()
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        proc.communicate(timeout=10)
+
+
 @pytest.mark.skipif(shutil.which("uv") is None or shutil.which("sh") is None, reason="needs uv, sh")
 def test_skill_launcher_runs_the_cli(tmp_path: Path, project: Path) -> None:
-    env = {k: v for k, v in os.environ.items() if k not in {"VIRTUAL_ENV", "CLAUDE_PLUGIN_DATA"}}
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in {"VIRTUAL_ENV", "CLAUDE_PLUGIN_DATA", "CLAUDE_PLUGIN_ROOT"}
+    }
     env["MEMTEGRITY_DATA_DIR"] = str(tmp_path / "data")
-    result = subprocess.run(
+    proc = subprocess.Popen(
         ["sh", str(ROOT / "bin" / "memtegrity"), "status", "--project", str(project)],
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
         env=env,
-        timeout=300,
     )
-    assert result.returncode == 0, result.stderr
-    assert "Audit log intact" in result.stdout
+    try:
+        stdout, stderr = proc.communicate(timeout=300)
+    except subprocess.TimeoutExpired:
+        _kill_tree(proc)
+        pytest.fail("the launcher didn't finish within 300 s (uv stalled?)")
+    assert proc.returncode == 0, stderr
+    assert "Audit log intact" in stdout
     assert (tmp_path / "data" / "venv").is_dir()  # same place the hooks keep theirs
 
 

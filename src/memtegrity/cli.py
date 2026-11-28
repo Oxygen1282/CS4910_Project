@@ -130,6 +130,9 @@ def status(project: Path | None = _PROJECT) -> None:
             console.print(f"  {i.table} #{i.row_id}: {i.problem}")
         raise typer.Exit(2)
     console.print(f"Audit log intact. Chain head: {store.chain_head(db)}")
+    from memtegrity import judge
+
+    console.print(f"AI judge: {judge.status()}", markup=False)
 
 
 def _short(path: Path, project_dir: Path) -> str:
@@ -254,6 +257,15 @@ def _print_event(console, db, e) -> None:  # noqa: ANN001
             console.print(f"  • {h['description']}: {h['matched_text']!r}{line} [{h['severity']}]")
         if a.get("origin"):
             console.print(f"Where the text came from: {a['origin']}")
+        llm = a.get("llm")
+        if llm:
+            console.print(
+                f"AI judge: {llm.get('score')}/100, {llm.get('category')}: "
+                f"{llm.get('rationale', '')}",
+                markup=False,
+            )
+        elif a.get("llm_refused"):
+            console.print("AI judge: declined to judge this change (rules only)")
     if e.diff:
         console.print(Syntax(e.diff, "diff", word_wrap=True))
 

@@ -88,6 +88,17 @@ def _decision(verdict: Verdict, reason: str, system_message: str | None = None) 
     return out
 
 
+def _judge(payload: HookInput) -> Any:
+    """The AI judge for this session, or ``None`` (switched off, no key): rules only."""
+    from memtegrity import judge
+
+    try:
+        return judge.default_judge(payload.get("session_id"))
+    except Exception as exc:  # noqa: BLE001 - no judge is fine; a crash here is not
+        print(f"memtegrity: judge unavailable: {exc!r}", file=sys.stderr)
+        return None
+
+
 def _fail_safe(why: str) -> HookOutput:
     return _decision(
         Verdict.ASK,
@@ -151,7 +162,13 @@ def _assess(
 
     evidence = evidence_from_transcript(payload.get("transcript_path"), _project_dir(payload))
     return engine.assess_change(
-        surface, current, after, inserted=inserted, evidence=evidence, path=path
+        surface,
+        current,
+        after,
+        inserted=inserted,
+        evidence=evidence,
+        path=path,
+        judge=_judge(payload),
     )
 
 
@@ -448,6 +465,9 @@ def handle_session_start(payload: HookInput) -> HookOutput:
             + "\nReview with /memtegrity:review. If it's yours: /memtegrity:approve <file>; "
             "if not: /memtegrity:restore <file>."
         )
+    notice = _judge_notice()
+    if notice:
+        user.append(notice)
     if not result.complete:
         user.append(
             "Memtegrity: this folder is very large, so only part of it was checked at "
@@ -456,6 +476,19 @@ def handle_session_start(payload: HookInput) -> HookOutput:
     if user:
         out["systemMessage"] = "\n".join(user)
     return out
+
+
+def _judge_notice() -> str | None:
+    """Once per session (at startup): say so if the AI judge is on but has no key. Silent
+    when the user switched it off on purpose."""
+    from memtegrity import judge
+
+    try:
+        if not judge.enabled() or judge.default_judge() is not None:
+            return None
+        return f"Memtegrity: AI judge {judge.status()}. Using rules only."
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _watch_session(session_id: str | None, project_dir: Path, files: list[Path]) -> list[Path]:
@@ -590,6 +623,7 @@ def _post_agent_command(payload: HookInput, tool_name: str, tool_input: HookInpu
     from memtegrity import recovery, store
 
     db = store.default_engine()
+    judge = _judge(payload)
     outcomes = []
     for path in changed:
         surface = paths.classify(path, project_dir)
@@ -607,6 +641,7 @@ def _post_agent_command(payload: HookInput, tool_name: str, tool_input: HookInpu
                 by_agent=True,
                 session_id=session_id,
                 tool_name=tool_name,
+                judge=judge,
             )
         )
     watch.refresh(session_id, changed)
@@ -671,6 +706,7 @@ def handle_file_changed(payload: HookInput) -> HookOutput:
         source=HookEvent.FILE_CHANGED,
         by_agent=False,
         session_id=session_id,
+        judge=_judge(payload),
     )
     watch.refresh(session_id, [path])  # handled: the next post-tool check mustn't re-judge it
     msgs = _change_messages(outcome, project_dir, by_agent=False)
@@ -776,6 +812,7 @@ def handle_config_change(payload: HookInput) -> HookOutput:
         source=HookEvent.CONFIG_CHANGE,
         by_agent=markers.tool_running(session_id),
         session_id=session_id,
+        judge=_judge(payload),
     )
     watch.refresh(session_id, [path])
     a = outcome.assessment

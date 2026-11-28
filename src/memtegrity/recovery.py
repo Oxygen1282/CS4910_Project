@@ -34,6 +34,7 @@ import os
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from sqlalchemy.engine import Engine
 
@@ -49,6 +50,9 @@ from memtegrity.models import (
     Verdict,
 )
 from memtegrity.surfaces import Surface
+
+if TYPE_CHECKING:
+    from memtegrity.judge import Judge
 
 RESTORE_ROOTS_ENV = "MEMTEGRITY_RESTORE_ROOTS"
 AUTO_RESTORE_ENV = "MEMTEGRITY_AUTO_RESTORE"
@@ -220,19 +224,21 @@ def handle_change(
     session_id: str | None = None,
     tool_name: str | None = None,
     repo_sync: bool = False,
+    judge: Judge | None = None,
 ) -> Outcome:
     """Judge a protected file that changed on disk and act on it (see module docstring).
 
     ``by_agent``: the change happened during one of the agent's tool calls.
     ``repo_sync``: the new content is the repository's (see ``matches_repository``); found
     automatically when not given.
+    ``judge``: the AI judge to consult (``memtegrity.judge``), or ``None`` for rules only.
     """
     p = str(path)
     content = integrity.read_text(path) if path.is_file() else None
     approved = store.latest_approved(db, p)
 
     if content is None:
-        return _handle_deletion(db, path, surface, approved, source, session_id, tool_name)
+        return _handle_deletion(db, path, surface, approved, source, session_id, tool_name, judge)
 
     sha = integrity.hash_text(content)
     if approved is not None and approved.sha256 == sha:
@@ -241,7 +247,7 @@ def handle_change(
         return Outcome(path, surface, "awaiting-approval")  # the post-write hook confirms it
 
     before = approved.content if approved else ""
-    assessment = analysis.assess_change(surface, before, content)
+    assessment = analysis.assess_change(surface, before, content, judge=judge)
     kind = FileEventKind.ADD if not before else FileEventKind.CHANGE
 
     if assessment.verdict is Verdict.ALLOW:
@@ -316,13 +322,14 @@ def _handle_deletion(
     source: HookEvent,
     session_id: str | None,
     tool_name: str | None,
+    judge: Judge | None = None,
 ) -> Outcome:
     """A protected file disappeared. Record it (once); flag it if what was removed looks
     like a safeguard. Memtegrity doesn't recreate deleted files on its own."""
     p = str(path)
     if approved is None or (approved.content == "" and approved.note == "deleted"):
         return Outcome(path, surface, "unchanged")
-    assessment = analysis.assess_change(surface, approved.content, "")
+    assessment = analysis.assess_change(surface, approved.content, "", judge=judge)
     flagged = assessment.verdict is not Verdict.ALLOW
     last = store.list_changes(db, p, limit=1)
     if (

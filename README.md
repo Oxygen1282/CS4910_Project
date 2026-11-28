@@ -2,9 +2,9 @@
 
 **A Claude Code plugin that detects, blocks and recovers from memory poisoning of AI coding agents.**
 
-> **Status: Blocks 1–3 done.** Memtegrity guards every way a protected instruction, memory or settings file can change. Claude's own Write/Edit tools are judged *before* the write. Claude's shell commands and MCP tools are judged too, and poison they write is **restored automatically**. Changes from outside Claude (editors, `git pull`) are flagged, and Claude is told to treat them as untrusted. Malicious settings changes are **blocked from taking effect**. Detection uses rules, provenance (did the text come from you or from something Claude read?), settings analysis, removed-safeguard checks and look-alike package checks, all offline. Everything goes into a hash-chained audit log, reviewable with `/memtegrity:review`. **Not built yet:** the AI judge, replay, and evaluation + report. Test only with `--plugin-dir` in a throwaway folder (see [Try it](#try-it)).
+> **Status: Blocks 1–4 built** (Block 4's live API check still open). Memtegrity guards every way a protected instruction, memory or settings file can change. Claude's own Write/Edit tools are judged *before* the write. Claude's shell commands and MCP tools are judged too, and poison they write is **restored automatically**. Changes from outside Claude (editors, `git pull`) are flagged, and Claude is told to treat them as untrusted. Malicious settings changes are **blocked from taking effect**. Detection uses rules, provenance (did the text come from you or from something Claude read?), settings analysis, removed-safeguard checks and look-alike package checks, all offline. An optional **AI judge** (Claude, with your own API key) adds a score for poison that has no patterns, such as made-up package names. It can raise a score freely, but it can lower one by at most one level, and never past a hard rule. Everything goes into a hash-chained audit log, reviewable with `/memtegrity:review`. **Not built yet:** replay, and evaluation + report. Test only with `--plugin-dir` in a throwaway folder (see [Try it](#try-it)).
 >
-> **Next up: Block 4 (AI judge).** Start at [docs/BLOCK4.md](docs/BLOCK4.md), the handoff: what each block built, where it lives, what's left, and the decisions already made.
+> **Next up: Block 5 (replay evidence).** Start at [docs/BLOCK5.md](docs/BLOCK5.md). [docs/BLOCK4.md](docs/BLOCK4.md) is the overall handoff: what each block built, where it lives, what's left, and the decisions already made. Block 4's live API check is still open.
 
 CS 4910 Computer Security, Fall 2026. Team: Jackson McGuire ([@jacksoncolorado](https://github.com/jacksoncolorado)) and [@Oxygen1282](https://github.com/Oxygen1282).
 
@@ -27,7 +27,9 @@ Memtegrity runs on Claude Code **hooks**, which the harness runs outside the mod
 | **ConfigChange** | **Blocks** a high-risk settings or skill change (new hook running downloaded code, `bypassPermissions`, disabling Memtegrity, redirecting API traffic) from taking effect. | Block 3 |
 | **Replay** (async) | Runs a simulated agent with clean vs. suspicious memory (fake tools only record calls) and reports behaviors that appear only with the change. | Planned (Block 5) |
 
-**Risk score.** Deterministic rules (destinations, credentials, `curl | bash`, "don't tell the user", hidden Unicode, encoded text, removed safeguards, look-alike packages, text addressed to AI reviewers) plus provenance and settings analysis, combined by clustering nearby signals with noisy-OR. Low means no opinion, medium means ask, high means deny. The AI judge (Block 4) adds a structured-output score for poison that has no patterns.
+**Risk score.** Deterministic rules (destinations, credentials, `curl | bash`, "don't tell the user", hidden Unicode, encoded text, removed safeguards, look-alike packages, text addressed to AI reviewers) plus provenance and settings analysis, combined by clustering nearby signals with noisy-OR. Low means no opinion, medium means ask, high means deny.
+
+**AI judge** (Block 4, optional). If `ANTHROPIC_API_KEY` is set in a `.env` file (see `.env.example`), Claude (`claude-sonnet-5-5`) also scores each change to a protected file: the diff with a little context, never whole files, with secrets redacted first. It can **raise** a score freely. It can **lower** one by at most one verdict level (deny → ask, ask → allow), and never when a hard rule fired (hidden text, encoded payloads, tampering, risky imports), so poison that talks the judge into "score 0" still gets at least a prompt. No key, a timeout, a refusal or an API error means rules only. Answers are cached, paid calls are capped per session (40), and `MEMTEGRITY_JUDGE=off` turns it off. The API key is billed separately from a Claude subscription.
 
 **Restore policy** (`auto_restore` in `config.py`, or `$MEMTEGRITY_AUTO_RESTORE`):
 - `agent` (default): only high-risk changes **Claude** made (shell, MCP) are restored automatically. A prompt injection acts through the agent.
@@ -77,8 +79,9 @@ uv run ruff format --check
 # 4. Install the git hooks (ruff, gitleaks, whitespace/JSON/YAML checks)
 uv run pre-commit install
 
-# 5. Only when you work on LLM features: add your API key
+# 5. Optional: turn on the AI judge with your API key
 cp .env.example .env    # then fill in ANTHROPIC_API_KEY. .env is gitignored.
+                        # Tests never read it: they force MEMTEGRITY_JUDGE=off and mock the API.
 ```
 
 Tests and CI **never** call the real API. Mock the client.
@@ -116,7 +119,9 @@ src/memtegrity/
   recovery.py          judge a changed file, restore policy, restore + quarantine    ✅
   markers.py, watch.py small files that let hooks coordinate without the database    ✅
   mcp.py               what an MCP tool call will write, from its arguments          ✅
-  llm_risk.py          AI judge                                                      Block 4
+  judge.py             AI judge interface, cache, per-session cost cap               ✅
+  llm_risk.py          AI judge: Claude implementation (structured output)           ✅
+  redact.py            remove secrets before anything is sent                        ✅
   replay/              simulated harness, fake tools, comparison                     Block 5
   report.py            HTML incident report                                          Block 6
   ── per agent ──
@@ -129,7 +134,8 @@ datasets/              benign + poisoned examples (format only so far)          
 demo/                  demo video plan
 tests/                 pytest, incl. a research attack corpus
 docs/
-  BLOCK4.md            start here: handoff for the next block (built so far, what's left)
+  BLOCK5.md            start here: guide for the next block (replay evidence)
+  BLOCK4.md            overall handoff: built so far, what's left, decisions
   BLOCK3.md, BLOCK2.md earlier blocks' guides (done)
   ARCHITECTURE.md      core vs. adapters, security decisions, how to add an agent
   THREATS.md           documented attacks → how Memtegrity handles each (with sources)
@@ -145,7 +151,7 @@ The project is built in **blocks**, one partner at a time. Each block ends with 
 | Dates | Work |
 |---|---|
 | Nov 4–23 | Blocks 1–3: guard, history and audit log, catch and undo (done) |
-| Nov 23–29 | Block 4: AI judge. Block 5: replay. Block 6: datasets, evaluation, report. **Code freeze Nov 29** |
+| Nov 23–29 | Block 4: AI judge (built). Block 5: replay. Block 6: datasets, evaluation, report. **Code freeze Nov 29** |
 | Dec 1–14 | IEEE report (.docx), slides (.pptx), demo video. **Due Dec 14** |
 
 ## Try it
@@ -194,8 +200,8 @@ uv run memtegrity scan path/to/repo
 | 1 | PreToolUse guard: path hardening, rules with anti-evasion, provenance, settings/MCP-config analysis, scoring, fail-safe hook, repo scanner, agent registry | **Done** |
 | 2 | SQLite history, hash-chained audit log, SessionStart baseline check, `@import` targets protected, `memtegrity baseline` / `status` ([guide](docs/BLOCK2.md)) | **Done** |
 | 3 | Catch and undo + offline detection: restore + quarantine with a who-made-it policy; FileChanged, post-Bash/MCP checks and new-file watching; MCP write guard; ConfigChange blocking; new-`@import` target check; agent can't approve its own content; `review` / `restore` / `approve` + real skills; removed-safeguard, reviewer-evasion and typosquat rules ([guide](docs/BLOCK3.md)) | **Done** |
-| 4 | AI judge (semantic poison, made-up packages, quoted-attack false positives) with its protections ([handoff](docs/BLOCK4.md)) | Next |
-| 5 | Replay evidence | |
+| 4 | AI judge (semantic poison, made-up packages, quoted-attack false positives) with its protections: one-level-down blend, redaction, injection-resistant prompt, pinned API address, cache, cost cap ([handoff](docs/BLOCK4.md)) | **Built**; live API check open |
+| 5 | Replay evidence ([guide](docs/BLOCK5.md)) | Next |
 | 6 | Datasets, evaluation (calibrates the provisional scores), HTML report, chain-head anchoring | |
 
 What's covered and what isn't, attack by attack: [docs/THREATS.md](docs/THREATS.md). Decisions made so far: [docs/PLANNING.md](docs/PLANNING.md).

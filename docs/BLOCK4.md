@@ -1,6 +1,8 @@
-# Handoff: Blocks 1–3 done, Blocks 4–6 to go
+# Handoff: Blocks 1–4 built, Blocks 5–6 to go
 
 **Read this first.** It says what Memtegrity does today, where each piece lives, what is left, and which decisions are already made, so the remaining work doesn't redo or reopen them.
+
+**Status:** Block 4 (AI judge) is built and tested with a mocked API on `feat/block4-judge`. Only its live check (4.9, a few real calls) is open: it needs a key in `.env`.
 
 **Prerequisite:** Block 3 (`feat/block3-recovery`) is merged into `main`.
 **Needs an API key from Block 4 on:** put `ANTHROPIC_API_KEY=…` in the repo's `.env` (gitignored; copy `.env.example`). Never export it in a shell profile: Claude Code itself would then bill the API instead of the subscription. Tests and CI never call the real API.
@@ -36,6 +38,9 @@ Memtegrity is a Claude Code plugin plus a Python package. It protects the files 
 | 3 | **Agent can't approve its own content:** `memtegrity approve` / `baseline` / database access from Claude always prompts the user | `hooks.py` (`_pre_bash`) | `test_agent_writes.py` |
 | 3 | **Review and undo:** `memtegrity review / restore / approve`; skills `/memtegrity:status`, `:review`, `:restore`, `:approve`; CLI finds the plugin's database | `cli.py`, `skills/`, `bin/memtegrity`, `paths.data_dir` | `test_cli_recovery.py` |
 | 3 | **Offline detection:** removed safeguards, text addressed to AI reviewers, look-alike packages | `rules.py`, `packages.py`, `_popular.py` | `test_new_rules.py` |
+| **4** | **AI judge:** Claude scores each change to a protected file (structured output); blended so it can raise a score freely but lower it one verdict level at most, never past a hard rule | `judge.py` (interface, cache, cost cap), `llm_risk.py` (Claude), `scoring.blend_llm` | `test_judge.py` |
+| 4 | **Redaction** before anything is sent: API keys, tokens, private keys, URL passwords, `.env`-style secrets | `redact.py` | `test_judge.py` |
+| 4 | **Wiring:** PreToolUse (Write/Edit, MCP), the post-command check, FileChanged and ConfigChange ask the judge; SessionStart doesn't (1 s budget) | `engine.assess_change(judge=…)`, `recovery.handle_change(judge=…)`, `hooks._judge` | `test_judge.py` |
 
 Coverage attack by attack, and the known gaps: [THREATS.md](THREATS.md). Design and security decisions: [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -43,6 +48,7 @@ Coverage attack by attack, and the known gaps: [THREATS.md](THREATS.md). Design 
 
 ```
 Claude Write/Edit/MCP write ──► PreToolUse ──► engine.assess_change ──► no opinion / ask / deny
+                                  (each judged by rules + provenance, then the AI judge if a key is set)
 Claude Bash / MCP command   ──► PostToolUse ─► watch list changed? ──► recovery.handle_change (by_agent)
 Editor, git pull, program   ──► FileChanged ─► recovery.handle_change (outside) ──► warn; restore if policy
 Settings / skill file       ──► ConfigChange ► recovery.handle_change ──► block if deny
@@ -52,9 +58,9 @@ Between sessions            ──► SessionStart ► baseline.check ──► 
 
 ### Current numbers
 
-- 393 tests pass on macOS. Windows-only tests skip elsewhere.
-- **One expected failure marks where Block 4 starts:** `test_made_up_package_needs_the_ai_judge`.
-- Hook cost when nothing protected changes: about 0.1 s per Write/Edit, and about 0.12 s each for the two Bash hooks. No database access.
+- 445 tests pass (Windows, this branch); 4 symlink tests skip on Windows without Developer Mode. No expected failures: the Block 4 `xfail` (`test_made_up_package_needs_the_ai_judge`) is now a real test.
+- Hook cost when nothing protected changes: about 0.1 s per Write/Edit, and about 0.12 s each for the two Bash hooks. No database access, no `anthropic` import.
+- Judge cost and latency: **not measured yet** (4.9). Budget estimate: ~1–2K input tokens and a few hundred output tokens per call on `claude-sonnet-5-5` ($2 / $10 per M) ≈ $0.005 per judged change, at most `judge_max_calls_per_session` (40) paid calls per session.
 
 ---
 
@@ -74,9 +80,21 @@ Recorded in [PLANNING.md](PLANNING.md). The ones that shape the remaining work:
 
 ## 3. What's left
 
-Suggested order: Block 4 (needed for the semantic gaps), Block 6's evaluation (needed for the report's numbers), then Block 5 and the HTML report. Code freeze is **Nov 29**.
+Suggested order: finish Block 4's live check, Block 6's evaluation (needed for the report's numbers), then Block 5 and the HTML report. Code freeze is **Nov 29**.
 
-### Block 4: AI judge
+### Block 4: AI judge (built; live check open)
+
+All of 4.1–4.8 below is built (where: the **Where** column; tests: `tests/test_judge.py`, mocked HTTP, no API calls). What was decided while building it:
+- **Refusal → rules only** (no server-side model fallback): chosen on Nov 27, keeps the judge on the stable API.
+- **Effort `low`**, `max_tokens` 4000, one try (`max_retries=0`), 20 s timeout: the hook is waiting.
+- **The judge isn't asked** when the rules already deny with a hard hit (it couldn't change the result), or at SessionStart.
+- **The API address is pinned** to `https://api.anthropic.com`: a poisoned settings file could set `ANTHROPIC_BASE_URL` for hook processes and steal the key.
+- **The change goes inside a tag named after its own hash** (`<memtegrity_change_…>`), so text in the change can't close the tag. The blend is the real protection.
+- **Cache** in `<data>/judge-cache/` keyed by (model, exact request); answers and refusals are cached, errors aren't. **Cost cap** in `<data>/judge-calls/` (one byte per paid call).
+- **Key:** first `.env` with `ANTHROPIC_API_KEY` in the data folder, then the plugin root. Never read from the project, never exported. `MEMTEGRITY_JUDGE=off` disables it. No key → one line at session start.
+- `memtegrity status` says whether the judge is on; `memtegrity review <#>` shows its score and rationale.
+
+**To finish 4.9:** put a key in `.env`, then run a few real calls on poisoned and benign examples (the corpus lines and `SLOP` in `tests/test_judge.py`), and record latency, tokens and cost in the PR.
 
 | # | Build | Where | Done when (test, mocked client) |
 |---|---|---|---|
@@ -93,6 +111,8 @@ Suggested order: Block 4 (needed for the semantic gaps), Block 6's evaluation (n
 What it should newly catch: made-up packages (slopsquatting), subtle bad advice, safeguards phrased without the usual words. It may also lower false positives on text that only *quotes* attack phrases, within decision 2.
 
 ### Block 5: Replay evidence
+
+**Full guide: [BLOCK5.md](BLOCK5.md).**
 
 Stubs and models are in place: `replay/harness.py`, `replay/fake_tools.py`, `replay/compare.py`, and `Trial`, `BehaviorDiff`, `ReplayResult` in `models.py`. Settings are in `config.py` (`trials_per_condition`, `flag_min_suspicious`, `flag_max_clean`, `replay_max_turns`).
 
@@ -128,7 +148,7 @@ Stubs and models are in place: `replay/harness.py`, `replay/fake_tools.py`, `rep
 
 ```bash
 uv sync
-uv run pytest          # all pass; 1 xfail (made-up package → Block 4); a few skips on Windows
+uv run pytest          # all pass; a few skips on Windows (symlinks without Developer Mode)
 uv run ruff check && uv run ruff format --check
 uv run pre-commit install
 git switch main && git pull && git switch -c feat/block4-judge
@@ -137,6 +157,7 @@ git switch main && git pull && git switch -c feat/block4-judge
 ## 6. Not yet verified live
 
 These are covered by unit tests and scripted hook runs, but not yet by a real Claude Code session on macOS:
+- The AI judge against the real API (4.9).
 - FileChanged reporting `add` for a watched path that didn't exist yet.
 - `${CLAUDE_PLUGIN_ROOT}` / `${CLAUDE_PLUGIN_DATA}` substitution inside the skills.
 - The ConfigChange block in a running session.
