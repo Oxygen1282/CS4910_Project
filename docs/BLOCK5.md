@@ -1,7 +1,7 @@
 # Block 5 guide: replay evidence (what would the poisoned memory make the agent do?)
 
 **For:** whoever builds Block 5 (and their coding agent). Read this file first.
-**Prerequisite:** Block 4 (`feat/block4-judge`) is merged into `main`. Its live API check (4.9 in [BLOCK4.md](BLOCK4.md)) may still be open: run it once a key is in `.env`, it's independent of this block.
+**Prerequisite:** Block 4 (`feat/block4-judge`) is merged into `main` (done and checked live; results in [BLOCK4.md](BLOCK4.md) under 4.9).
 **Needs an API key for the live check only.** `ANTHROPIC_API_KEY=…` in the repo's `.env` (see `.env.example`). Tests and CI never call the real API.
 
 ## 1. Get oriented (15 min)

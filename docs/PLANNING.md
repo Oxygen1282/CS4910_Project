@@ -55,7 +55,8 @@ Smaller things to agree on:
 - **Live check later:** Block 4 is built and tested with a mocked API; the real calls (latency, cost) run once a key is in `.env`.
 - **Judge settings:** effort `low`, one try, 20 s timeout, at most 40 paid calls per session, answers cached (`config.py`: `judge_*`).
 - **Judge not used at SessionStart** (its ~1 s budget) or when the rules already deny with a hard hit.
-- Windows test fix included: the launcher test kills the whole process tree on timeout instead of hanging.
+- Windows test fix included: tests that start `uv` kill the whole process tree on timeout instead of hanging (`conftest.run_bounded`).
+- **Live check done (Nov 27):** ~$0.005 and ~1.7 s of API time per judged change. The `anthropic` import adds 8–10 s per judged hook on the Windows laptop: measure on the demo Mac.
 
 ## Risks
 1. **PreToolUse latency.** Claude waits while we score. Keep the LLM call short with a timeout (`llm_timeout_seconds`), fall back to rules only, and measure it.
